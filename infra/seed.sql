@@ -22,3 +22,10 @@ INSERT INTO themes (slug, title, search_keywords, default_hashtags) VALUES
    ARRAY['#Tech', '#Technology', '#Gadgets', '#TechTips', '#Shorts'])
 ON CONFLICT (slug) DO NOTHING;
 
+-- Extra theme: Roblox
+INSERT INTO themes (slug, title, search_keywords, default_hashtags) VALUES
+  ('roblox', 'Roblox',
+   ARRAY['roblox shorts', 'roblox gameplay', 'roblox funny moments'],
+   ARRAY['#Roblox', '#RobloxShorts', '#Gaming', '#Shorts'])
+ON CONFLICT (slug) DO NOTHING;
+
