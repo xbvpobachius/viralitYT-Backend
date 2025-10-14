@@ -72,11 +72,18 @@ def transform_video(input_path: str, output_path: str) -> str:
             '-of', 'csv=p=0',
             input_path
         ]
-        
-        probe_result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
-        if probe_result.returncode != 0:
-            # If probe fails, just copy the file
-            print(f"Warning: Could not probe video, using as-is")
+
+        try:
+            probe_result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
+            if probe_result.returncode != 0:
+                # If probe fails, just copy the file
+                print(f"Warning: Could not probe video (exit {probe_result.returncode}), using as-is")
+                import shutil
+                shutil.copy(input_path, output_path)
+                return output_path
+        except FileNotFoundError:
+            # ffprobe missing: fallback to copy
+            print("Warning: ffprobe not found, using input file as-is")
             import shutil
             shutil.copy(input_path, output_path)
             return output_path
