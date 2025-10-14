@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     ytdlp_bin: str = "yt-dlp"
     ffmpeg_bin: str = "ffmpeg"
     temp_dir: str = "/tmp"
+    # Optional authentication for yt-dlp when YouTube requires cookies
+    ytdlp_cookies_file: str = ""
+    ytdlp_cookies_from_browser: str = ""
     worker_poll_interval: int = 60
     worker_batch_size: int = 5
     upload_visibility: str = "unlisted"

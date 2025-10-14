@@ -29,8 +29,13 @@ def download_video(video_id: str, output_path: str) -> str:
             '--no-playlist',
             '--quiet',
             '--no-warnings',
-            f'https://www.youtube.com/watch?v={video_id}'
         ]
+        # Add cookies if configured (file has priority)
+        if getattr(settings, 'ytdlp_cookies_file', ''):
+            cmd += ['--cookies', settings.ytdlp_cookies_file]
+        elif getattr(settings, 'ytdlp_cookies_from_browser', ''):
+            cmd += ['--cookies-from-browser', settings.ytdlp_cookies_from_browser]
+        cmd += [f'https://www.youtube.com/watch?v={video_id}']
         
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         
