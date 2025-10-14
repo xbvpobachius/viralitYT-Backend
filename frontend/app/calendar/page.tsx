@@ -12,6 +12,8 @@ export default function CalendarPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [selectedAccount, setSelectedAccount] = useState<string>('')
   const [loading, setLoading] = useState(true)
+  const [month, setMonth] = useState<number>(new Date().getMonth())
+  const [year, setYear] = useState<number>(new Date().getFullYear())
 
   useEffect(() => {
     loadData()
@@ -46,19 +48,51 @@ export default function CalendarPage() {
     return byDate
   }
 
-  const getNext14Days = () => {
-    const days = []
-    const today = new Date()
-    for (let i = 0; i < 14; i++) {
-      const day = new Date(today)
-      day.setDate(today.getDate() + i)
-      days.push(day)
-    }
-    return days
+  const getMonthDays = () => {
+    const firstDay = new Date(year, month, 1)
+    const startWeekday = firstDay.getDay() // 0-6
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    const grid: (Date | null)[] = []
+    for (let i = 0; i < startWeekday; i++) grid.push(null)
+    for (let d = 1; d <= daysInMonth; d++) grid.push(new Date(year, month, d))
+    while (grid.length % 7 !== 0) grid.push(null)
+    return grid
   }
 
   const uploadsByDate = getUploadsByDate()
-  const days = getNext14Days()
+  const gridDays = getMonthDays()
+  const monthLabel = new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  const prevMonth = () => {
+    const d = new Date(year, month, 1)
+    d.setMonth(d.getMonth() - 1)
+    setMonth(d.getMonth()); setYear(d.getFullYear())
+  }
+  const nextMonth = () => {
+    const d = new Date(year, month, 1)
+    d.setMonth(d.getMonth() + 1)
+    setMonth(d.getMonth()); setYear(d.getFullYear())
+  }
+
+  const rescheduleUpload = async (upload: Upload) => {
+    const iso = prompt('Nueva fecha/hora (ISO 8601):', upload.scheduled_for)
+    if (!iso) return
+    try {
+      await api.updateUpload(upload.id, { scheduled_for: iso })
+      await loadData()
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
+
+  const deleteUpload = async (upload: Upload) => {
+    if (!confirm('Eliminar este upload?')) return
+    try {
+      await api.deleteUpload(upload.id)
+      await loadData()
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -141,51 +175,56 @@ export default function CalendarPage() {
           </Card>
 
           {/* Calendar Grid */}
-          <div className="grid gap-4">
-            {days.map((day) => {
-              const dateKey = day.toISOString().split('T')[0]
-              const dayUploads = uploadsByDate[dateKey] || []
-              const isToday = new Date().toISOString().split('T')[0] === dateKey
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={prevMonth}>Prev</Button>
+              <Button variant="outline" onClick={nextMonth}>Next</Button>
+            </div>
+            <h3 className="text-xl font-bold">{monthLabel}</h3>
+            <div />
+          </div>
+
+          <div className="grid grid-cols-7 gap-2">
+            {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => (
+              <div key={d} className="text-xs text-muted-foreground text-center">{d}</div>
+            ))}
+            {gridDays.map((day, idx) => {
+              const dateKey = day ? day.toISOString().split('T')[0] : ''
+              const dayUploads = day ? (uploadsByDate[dateKey] || []) : []
+              const isToday = day ? new Date().toDateString() === day.toDateString() : false
 
               return (
-                <Card key={dateKey} className={isToday ? 'ring-2 ring-primary' : ''}>
-                  <CardHeader className="pb-3">
+                <Card key={idx} className={`min-h-[120px] ${isToday ? 'ring-2 ring-primary' : ''}`}>
+                  <CardHeader className="py-2 px-3">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg">
-                        {day.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                        {isToday && <Badge className="ml-2">Today</Badge>}
-                      </CardTitle>
-                      <CardDescription>{dayUploads.length} uploads</CardDescription>
+                      <CardTitle className="text-sm">{day ? day.getDate() : ''}</CardTitle>
+                      {day && <CardDescription className="text-xs">{dayUploads.length}</CardDescription>}
                     </div>
                   </CardHeader>
-                  <CardContent>
-                    {dayUploads.length > 0 ? (
-                      <div className="space-y-2">
-                        {dayUploads
-                          .sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime())
-                          .map((upload) => (
-                            <div
-                              key={upload.id}
-                              className="flex items-center gap-3 p-3 bg-secondary/50 rounded-lg"
-                            >
-                              <div className={`w-3 h-3 rounded-full ${getStatusColor(upload.status)}`} />
-                              <div className="flex-1">
-                                <p className="font-medium text-sm">{upload.title}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {upload.account_name} • {new Date(upload.scheduled_for).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                </p>
-                              </div>
-                              <Badge variant="outline" className="text-xs">
-                                {upload.status}
-                              </Badge>
+                  <CardContent className="px-2 pb-2">
+                    <div className="space-y-1">
+                      {dayUploads
+                        .sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime())
+                        .slice(0, 4)
+                        .map((upload) => (
+                          <div key={upload.id} className="group flex items-center gap-2 p-2 bg-secondary/50 rounded-md">
+                            <div className={`w-2 h-2 rounded-full ${getStatusColor(upload.status)}`} />
+                            <div className="flex-1 min-w-0">
+                              <p className="truncate text-xs">{upload.title}</p>
+                              <p className="text-[10px] text-muted-foreground">
+                                {new Date(upload.scheduled_for).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                              </p>
                             </div>
-                          ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        No uploads scheduled
-                      </p>
-                    )}
+                            <div className="hidden group-hover:flex gap-1">
+                              <Button size="sm" variant="outline" onClick={() => rescheduleUpload(upload)}>Move</Button>
+                              <Button size="sm" variant="destructive" onClick={() => deleteUpload(upload)}>Del</Button>
+                            </div>
+                          </div>
+                        ))}
+                      {dayUploads.length > 4 && (
+                        <p className="text-[10px] text-muted-foreground">+{dayUploads.length - 4} more</p>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               )

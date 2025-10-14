@@ -88,6 +88,14 @@ class UpdateAccountStatusRequest(BaseModel):
     active: bool
 
 
+class UpdateUploadRequest(BaseModel):
+    scheduled_for: Optional[datetime] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+    status: Optional[str] = None
+
+
 # Health check
 @app.get("/")
 async def root():
@@ -264,6 +272,34 @@ async def list_uploads(
         "uploads": uploads,
         "count": len(uploads)
     }
+
+
+@app.patch("/uploads/{upload_id}")
+async def update_upload(upload_id: str, request: UpdateUploadRequest):
+    """Update an upload's schedule or metadata."""
+    try:
+        updated = await models.update_upload(UUID(upload_id),
+            scheduled_for=request.scheduled_for,
+            title=request.title,
+            description=request.description,
+            tags=request.tags,
+            status=request.status,
+        )
+        if not updated:
+            raise HTTPException(status_code=404, detail="Upload not found")
+        return updated
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/uploads/{upload_id}")
+async def delete_upload(upload_id: str):
+    """Delete an upload."""
+    try:
+        await models.delete_upload(UUID(upload_id))
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/uploads/schedule/bulk")

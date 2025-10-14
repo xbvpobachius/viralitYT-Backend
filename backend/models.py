@@ -286,7 +286,7 @@ async def list_uploads(
         if account_id and status:
             rows = await conn.fetch(
                 """
-                SELECT u.*, v.title as video_title, v.source_video_id, a.display_name as account_name
+                SELECT u.*, v.title as video_title, v.source_video_id, v.theme_slug, a.display_name as account_name
                 FROM uploads u
                 JOIN videos v ON u.video_id = v.id
                 JOIN accounts a ON u.account_id = a.id
@@ -299,7 +299,7 @@ async def list_uploads(
         elif account_id:
             rows = await conn.fetch(
                 """
-                SELECT u.*, v.title as video_title, v.source_video_id, a.display_name as account_name
+                SELECT u.*, v.title as video_title, v.source_video_id, v.theme_slug, a.display_name as account_name
                 FROM uploads u
                 JOIN videos v ON u.video_id = v.id
                 JOIN accounts a ON u.account_id = a.id
@@ -312,7 +312,7 @@ async def list_uploads(
         elif status:
             rows = await conn.fetch(
                 """
-                SELECT u.*, v.title as video_title, v.source_video_id, a.display_name as account_name
+                SELECT u.*, v.title as video_title, v.source_video_id, v.theme_slug, a.display_name as account_name
                 FROM uploads u
                 JOIN videos v ON u.video_id = v.id
                 JOIN accounts a ON u.account_id = a.id
@@ -325,7 +325,7 @@ async def list_uploads(
         else:
             rows = await conn.fetch(
                 """
-                SELECT u.*, v.title as video_title, v.source_video_id, a.display_name as account_name
+                SELECT u.*, v.title as video_title, v.source_video_id, v.theme_slug, a.display_name as account_name
                 FROM uploads u
                 JOIN videos v ON u.video_id = v.id
                 JOIN accounts a ON u.account_id = a.id
@@ -389,6 +389,50 @@ async def increment_upload_retry(upload_id: UUID) -> int:
             upload_id
         )
         return row['retry_count']
+
+
+async def update_upload(
+    upload_id: UUID,
+    *,
+    scheduled_for: Optional[datetime] = None,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    status: Optional[str] = None
+) -> Dict[str, Any]:
+    """Update mutable fields of an upload and return updated row."""
+    async with get_db() as conn:
+        fields = []
+        values: List[Any] = []
+        if scheduled_for is not None:
+            fields.append("scheduled_for = $%d" % (len(values)+1))
+            values.append(scheduled_for)
+        if title is not None:
+            fields.append("title = $%d" % (len(values)+1))
+            values.append(title)
+        if description is not None:
+            fields.append("description = $%d" % (len(values)+1))
+            values.append(description)
+        if tags is not None:
+            fields.append("tags = $%d" % (len(values)+1))
+            values.append(tags)
+        if status is not None:
+            fields.append("status = $%d" % (len(values)+1))
+            values.append(status)
+        if not fields:
+            row = await conn.fetchrow("SELECT * FROM uploads WHERE id = $1", upload_id)
+            return dict(row) if row else None
+        values.append(upload_id)
+        query = f"UPDATE uploads SET {', '.join(fields)} WHERE id = ${len(values)} RETURNING *"
+        row = await conn.fetchrow(query, *values)
+        return dict(row)
+
+
+async def delete_upload(upload_id: UUID) -> None:
+    """Delete an upload by ID."""
+    async with get_db() as conn:
+        await conn.execute("DELETE FROM upload_history WHERE upload_id = $1", upload_id)
+        await conn.execute("DELETE FROM uploads WHERE id = $1", upload_id)
 
 
 async def select_due_uploads(now: datetime, limit: int = 10) -> List[Dict[str, Any]]:

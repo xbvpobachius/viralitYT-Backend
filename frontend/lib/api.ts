@@ -211,6 +211,25 @@ class APIClient {
     )
   }
 
+  async updateUpload(uploadId: string, data: Partial<{
+    scheduled_for: string
+    title: string
+    description: string
+    tags: string[]
+    status: string
+  }>) {
+    return this.request<Upload>(`/uploads/${uploadId}` , {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteUpload(uploadId: string) {
+    return this.request<{ success: boolean }>(`/uploads/${uploadId}` , {
+      method: 'DELETE',
+    })
+  }
+
   async getDashboardMetrics() {
     return this.request<DashboardMetrics>('/dashboard/metrics')
   }
