@@ -9,7 +9,7 @@ from youtube_client import search_channels, get_channel_videos
 import models
 
 
-async def scan_theme_for_videos(theme_slug: str, account_id: str) -> Dict[str, Any]:
+async def scan_theme_for_videos(theme_slug: str, account_id: str, search_query: str | None = None) -> Dict[str, Any]:
     """
     Scan YouTube for SHORTS matching a theme.
     Uses search keywords from the theme to find relevant channels,
@@ -25,9 +25,13 @@ async def scan_theme_for_videos(theme_slug: str, account_id: str) -> Dict[str, A
     # Get authorized YouTube client
     youtube, project_id = await get_authorized_youtube_client(account_id)
     
-    search_keywords = theme.get('search_keywords', [])
-    if not search_keywords:
-        search_keywords = [f"{theme_slug} shorts"]
+    # If a custom query is provided, use it solely
+    if search_query:
+        search_keywords = [search_query]
+    else:
+        search_keywords = theme.get('search_keywords', [])
+        if not search_keywords:
+            search_keywords = [f"{theme_slug} shorts"]
     
     all_channels = []
     all_videos = []

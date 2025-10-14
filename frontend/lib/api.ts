@@ -154,7 +154,7 @@ class APIClient {
     return this.request<{ themes: Theme[] }>('/themes')
   }
 
-  async scanTheme(theme_slug: string, account_id: string) {
+  async scanTheme(theme_slug: string, account_id: string, search_query?: string) {
     return this.request<{
       theme: string
       channels_found: number
@@ -162,7 +162,7 @@ class APIClient {
       videos_inserted: number
     }>('/themes/scan', {
       method: 'POST',
-      body: JSON.stringify({ theme_slug, account_id }),
+      body: JSON.stringify({ theme_slug, account_id, search_query }),
     })
   }
 

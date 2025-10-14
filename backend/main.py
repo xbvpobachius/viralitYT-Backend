@@ -63,6 +63,7 @@ class StartOAuthRequest(BaseModel):
 class ScanThemeRequest(BaseModel):
     theme_slug: str
     account_id: str
+    search_query: Optional[str] = None
 
 
 class PickVideoRequest(BaseModel):
@@ -215,7 +216,8 @@ async def scan_theme(request: ScanThemeRequest):
     try:
         result = await video_feed.scan_theme_for_videos(
             request.theme_slug,
-            request.account_id
+            request.account_id,
+            request.search_query
         )
         return result
     except Exception as e:

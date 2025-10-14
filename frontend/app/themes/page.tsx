@@ -16,6 +16,7 @@ export default function ThemesPage() {
   const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [scanning, setScanning] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     loadData()
@@ -61,7 +62,7 @@ export default function ThemesPage() {
 
     setScanning(true)
     try {
-      const result = await api.scanTheme(selectedTheme, selectedAccount)
+      const result = await api.scanTheme(selectedTheme, selectedAccount, searchQuery || undefined)
       alert(`Scan complete! Found ${result.videos_found} Shorts from ${result.channels_found} channels. ${result.videos_inserted} new videos added.`)
       await loadVideos()
     } catch (err: any) {
@@ -153,7 +154,7 @@ export default function ThemesPage() {
               <CardDescription>Choose a theme to scan for viral Shorts (≤60s)</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid md:grid-cols-3 gap-4">
+              <div className="grid md:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Theme</label>
                   <select
@@ -184,6 +185,17 @@ export default function ThemesPage() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Custom search (optional)</label>
+                  <input
+                    type="text"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="e.g. roblox clips"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
                 </div>
 
                 <div className="space-y-2">
