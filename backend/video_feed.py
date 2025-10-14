@@ -100,9 +100,8 @@ async def pick_video_for_account(
     video_uuid = UUID(video_id)
     account_uuid = UUID(account_id)
     
-    # Get video and theme
-    videos = await models.list_videos(theme_slug='', picked=None, limit=1000)
-    video = next((v for v in videos if str(v['id']) == video_id), None)
+    # Get video by ID (reliable fetch)
+    video = await models.get_video_by_id(video_uuid)
     
     if not video:
         raise ValueError("Video not found")

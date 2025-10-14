@@ -229,11 +229,18 @@ export default function ThemesPage() {
                     >
                       <CardContent className="p-0">
                         {video.thumbnail_url && (
-                          <img
-                            src={video.thumbnail_url}
-                            alt={video.title}
-                            className="w-full h-48 object-cover rounded-t-lg"
-                          />
+                          <a
+                            href={`https://www.youtube.com/watch?v=${video.source_video_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <img
+                              src={video.thumbnail_url}
+                              alt={video.title}
+                              className="w-full h-48 object-cover rounded-t-lg"
+                            />
+                          </a>
                         )}
                         <div className="p-4 space-y-2">
                           <p className="font-medium text-sm line-clamp-2">{video.title}</p>

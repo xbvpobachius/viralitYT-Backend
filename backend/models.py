@@ -234,6 +234,13 @@ async def list_videos(theme_slug: str, picked: Optional[bool] = None, limit: int
         return [dict(row) for row in rows]
 
 
+async def get_video_by_id(video_id: UUID) -> Optional[Dict[str, Any]]:
+    """Get a single video by its UUID."""
+    async with get_db() as conn:
+        row = await conn.fetchrow("SELECT * FROM videos WHERE id = $1", video_id)
+        return dict(row) if row else None
+
+
 async def mark_video_picked(video_id: UUID) -> None:
     """Mark a video as picked."""
     async with get_db() as conn:
