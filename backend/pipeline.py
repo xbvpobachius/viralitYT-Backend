@@ -30,6 +30,13 @@ def download_video(video_id: str, output_path: str) -> str:
             '--quiet',
             '--no-warnings',
         ]
+        # Hardening flags
+        if getattr(settings, 'ytdlp_extractor_args', ''):
+            cmd += ['--extractor-args', settings.ytdlp_extractor_args]
+        if getattr(settings, 'ytdlp_retries', 0):
+            cmd += ['--retries', str(settings.ytdlp_retries)]
+        if getattr(settings, 'ytdlp_sleep_requests', 0):
+            cmd += ['--sleep-requests', str(settings.ytdlp_sleep_requests)]
         # Add cookies if configured (file has priority)
         if getattr(settings, 'ytdlp_cookies_file', ''):
             cmd += ['--cookies', settings.ytdlp_cookies_file]

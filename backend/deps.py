@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     oauth_redirect_uri: str = "http://localhost:8000/auth/youtube/callback"
     encryption_key: str = "0000000000000000000000000000000000000000000000000000000000000000"
     ytdlp_bin: str = "yt-dlp"
+    ytdlp_extractor_args: str = "youtube:player_client=android"
+    ytdlp_retries: int = 5
+    ytdlp_sleep_requests: float = 1.0
     ffmpeg_bin: str = "ffmpeg"
     temp_dir: str = "/tmp"
     # Optional authentication for yt-dlp when YouTube requires cookies
