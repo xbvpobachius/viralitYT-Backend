@@ -88,10 +88,10 @@ function OnboardingContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="border-b/0">
+        <div className="container mx-auto px-4 py-6 flex items-center justify-between">
           <Link href="/">
-            <h1 className="text-2xl font-bold">Viralit-YT</h1>
+            <h1 className="text-2xl md:text-3xl font-extrabold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-red-400 via-red-500 to-red-600 drop-shadow-[0_0_12px_hsla(0,92%,62%,0.5)]">ViralitYT</h1>
           </Link>
           <Link href="/dashboard">
             <Button variant="outline">Dashboard</Button>
@@ -109,7 +109,7 @@ function OnboardingContent() {
           </div>
 
           {error && (
-            <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded">
+            <div className="bg-destructive/10 border border-destructive/40 text-destructive px-4 py-3 rounded">
               <p className="font-semibold">Error:</p>
               <p>{error}</p>
             </div>

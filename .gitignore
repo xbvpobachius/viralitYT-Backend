@@ -31,3 +31,6 @@ dist/
 .vercel
 .railway
 
+# Secrets / local files
+backend/cookies.txt
+

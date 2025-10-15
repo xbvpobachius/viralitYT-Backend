@@ -2,6 +2,7 @@
 Dependencies: Database connections, encryption, and shared utilities.
 """
 import os
+from pathlib import Path
 from typing import Optional
 import asyncpg
 from pydantic_settings import BaseSettings
@@ -27,6 +28,10 @@ class Settings(BaseSettings):
     # Optional authentication for yt-dlp when YouTube requires cookies
     ytdlp_cookies_file: str = ""
     ytdlp_cookies_from_browser: str = ""
+    ytdlp_cookies_b64: str = ""
+    # Additional robustness settings
+    ytdlp_user_agents: str = ""  # Comma-separated list of user agents to rotate
+    ytdlp_use_ipv4: bool = True  # Force IPv4 to avoid some blocks
     worker_poll_interval: int = 60
     worker_batch_size: int = 5
     upload_visibility: str = "unlisted"
@@ -49,6 +54,31 @@ for key, value in os.environ.items():
         print(f"  {key} = {value}")
 print(f"DEBUG: temp_client_id from settings: {getattr(settings, 'temp_client_id', 'NOT_FOUND')}")
 print(f"DEBUG: temp_client_secret from settings: {getattr(settings, 'temp_client_secret', 'NOT_FOUND')}")
+
+# Configure yt-dlp cookies from Base64 if provided (Railway-friendly)
+try:
+    if not getattr(settings, 'ytdlp_cookies_file', '') and getattr(settings, 'ytdlp_cookies_b64', ''):
+        cookies_bytes = base64.b64decode(settings.ytdlp_cookies_b64)
+        target_path = Path(settings.temp_dir) / 'yt_cookies.txt'
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(target_path, 'wb') as f:
+            f.write(cookies_bytes)
+        settings.ytdlp_cookies_file = str(target_path.resolve())
+        print(f"INFO: Wrote yt-dlp cookies to: {settings.ytdlp_cookies_file}")
+except Exception as _e:
+    print(f"WARN: Could not decode YTDLP_COOKIES_B64: {_e}")
+
+# Configure default yt-dlp cookies file if present
+try:
+    if not getattr(settings, 'ytdlp_cookies_file', ''):
+        default_cookies_path = Path(__file__).parent / 'cookies.txt'
+        if default_cookies_path.exists() and default_cookies_path.stat().st_size > 0:
+            # Use absolute path to avoid cwd issues
+            settings.ytdlp_cookies_file = str(default_cookies_path.resolve())
+            print(f"INFO: Using yt-dlp cookies file: {settings.ytdlp_cookies_file}")
+except Exception as _e:
+    # Non-fatal; continue without cookies if detection fails
+    print(f"WARN: Could not auto-configure yt-dlp cookies file: {_e}")
 
 # Database connection pool (global)
 db_pool: Optional[asyncpg.Pool] = None

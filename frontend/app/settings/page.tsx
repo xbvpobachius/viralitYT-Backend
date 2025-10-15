@@ -24,10 +24,10 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="border-b/0">
+        <div className="container mx-auto px-4 py-6 flex items-center justify-between">
           <Link href="/">
-            <h1 className="text-2xl font-bold">Viralit-YT</h1>
+            <h1 className="text-2xl md:text-3xl font-extrabold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-red-400 via-red-500 to-red-600 drop-shadow-[0_0_12px_hsla(0,92%,62%,0.5)]">ViralitYT</h1>
           </Link>
           <div className="flex gap-2">
             <Link href="/dashboard">
@@ -45,7 +45,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Theme Settings */}
-          <Card>
+          <Card className="bg-card/40 backdrop-blur border-border/40">
             <CardHeader>
               <CardTitle>Theme Configuration</CardTitle>
               <CardDescription>
@@ -92,7 +92,7 @@ export default function SettingsPage() {
           </Card>
 
           {/* Upload Settings */}
-          <Card>
+          <Card className="bg-card/40 backdrop-blur border-border/40">
             <CardHeader>
               <CardTitle>Upload Settings</CardTitle>
               <CardDescription>
@@ -151,7 +151,7 @@ export default function SettingsPage() {
           </Card>
 
           {/* Worker Settings */}
-          <Card>
+          <Card className="bg-card/40 backdrop-blur border-border/40">
             <CardHeader>
               <CardTitle>Worker Settings</CardTitle>
               <CardDescription>
@@ -178,7 +178,7 @@ export default function SettingsPage() {
           </Card>
 
           {/* System Info */}
-          <Card>
+          <Card className="bg-card/40 backdrop-blur border-border/40">
             <CardHeader>
               <CardTitle>System Information</CardTitle>
               <CardDescription>

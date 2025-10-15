@@ -18,46 +18,123 @@ class PipelineError(Exception):
 
 def download_video(video_id: str, output_path: str) -> str:
     """
-    Download video from YouTube using yt-dlp.
+    Download video from YouTube using yt-dlp with robust anti-bot measures.
     Returns path to downloaded file.
     """
-    try:
-        cmd = [
-            settings.ytdlp_bin,
-            '-f', 'best[ext=mp4]',  # Best quality MP4
-            '-o', output_path,
-            '--no-playlist',
-            '--quiet',
-            '--no-warnings',
-        ]
-        # Hardening flags
-        if getattr(settings, 'ytdlp_extractor_args', ''):
-            cmd += ['--extractor-args', settings.ytdlp_extractor_args]
-        if getattr(settings, 'ytdlp_retries', 0):
-            cmd += ['--retries', str(settings.ytdlp_retries)]
-        if getattr(settings, 'ytdlp_sleep_requests', 0):
-            cmd += ['--sleep-requests', str(settings.ytdlp_sleep_requests)]
-        # Add cookies if configured (file has priority)
-        if getattr(settings, 'ytdlp_cookies_file', ''):
-            cmd += ['--cookies', settings.ytdlp_cookies_file]
-        elif getattr(settings, 'ytdlp_cookies_from_browser', ''):
-            cmd += ['--cookies-from-browser', settings.ytdlp_cookies_from_browser]
-        cmd += [f'https://www.youtube.com/watch?v={video_id}']
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        
-        if result.returncode != 0:
-            raise PipelineError(f"yt-dlp failed: {result.stderr}")
-        
-        if not os.path.exists(output_path):
-            raise PipelineError(f"Downloaded file not found: {output_path}")
-        
-        return output_path
+    import random
+    import time
     
-    except subprocess.TimeoutExpired:
-        raise PipelineError("Download timeout (5 minutes)")
-    except Exception as e:
-        raise PipelineError(f"Download error: {str(e)}")
+    # Default user agents to rotate if none configured
+    default_user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15'
+    ]
+    
+    # Get user agents from settings or use defaults
+    user_agents = getattr(settings, 'ytdlp_user_agents', '').split(',') if getattr(settings, 'ytdlp_user_agents', '') else default_user_agents
+    user_agents = [ua.strip() for ua in user_agents if ua.strip()]
+    selected_ua = random.choice(user_agents)
+    
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            if attempt > 0:
+                # Progressive backoff between attempts
+                sleep_time = min(10 * (2 ** attempt), 60)
+                print(f"Attempt {attempt + 1}/{max_attempts} for video {video_id}, waiting {sleep_time}s...")
+                time.sleep(sleep_time)
+            
+            cmd = [
+                settings.ytdlp_bin,
+                '-f', 'best[ext=mp4]',  # Best quality MP4
+                '-o', output_path,
+                '--no-playlist',
+                '--quiet',
+                '--no-warnings',
+                # Robust anti-bot measures
+                '--user-agent', selected_ua,
+                '--sleep-requests', '3',
+                '--sleep-interval', '8',
+                '--max-sleep-interval', '15',
+                '--sleep-subtitles', '5',
+                '--extractor-retries', '3',
+                '--fragment-retries', '5',
+                '--retry-sleep', '5',
+            ]
+            
+            # Force IPv4 if configured
+            if getattr(settings, 'ytdlp_use_ipv4', True):
+                cmd += ['--force-ipv4']
+            
+            # Hardening flags
+            if getattr(settings, 'ytdlp_extractor_args', ''):
+                cmd += ['--extractor-args', settings.ytdlp_extractor_args]
+            if getattr(settings, 'ytdlp_retries', 0):
+                cmd += ['--retries', str(settings.ytdlp_retries)]
+            if getattr(settings, 'ytdlp_sleep_requests', 0):
+                cmd += ['--sleep-requests', str(settings.ytdlp_sleep_requests)]
+            
+            # Add cookies if configured (file has priority)
+            if getattr(settings, 'ytdlp_cookies_file', ''):
+                cmd += ['--cookies', settings.ytdlp_cookies_file]
+            elif getattr(settings, 'ytdlp_cookies_from_browser', ''):
+                cmd += ['--cookies-from-browser', settings.ytdlp_cookies_from_browser]
+            
+            cmd += [f'https://www.youtube.com/watch?v={video_id}']
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            
+            if result.returncode == 0 and os.path.exists(output_path):
+                return output_path
+            
+            stderr = result.stderr or ""
+            stdout = result.stdout or ""
+            
+            # Check for specific error types
+            if 'Sign in to confirm you' in stderr or 'cookies' in stderr.lower():
+                if attempt < max_attempts - 1:
+                    print(f"Bot check detected, retrying with different user agent...")
+                    selected_ua = random.choice(user_agents)  # Try different UA
+                    continue
+                else:
+                    hint = "\nHint: YouTube requires fresh cookies. Update YTDLP_COOKIES_B64 in Railway with new cookies."
+                    raise PipelineError(f"yt-dlp bot check failed after {max_attempts} attempts: {stderr}{hint}")
+            
+            elif 'HTTP Error 429' in stderr or 'rate limit' in stderr.lower():
+                if attempt < max_attempts - 1:
+                    print(f"Rate limited, waiting longer...")
+                    continue
+                else:
+                    raise PipelineError(f"yt-dlp rate limited after {max_attempts} attempts: {stderr}")
+            
+            elif 'Video unavailable' in stderr or 'Private video' in stderr:
+                raise PipelineError(f"Video {video_id} is unavailable: {stderr}")
+            
+            else:
+                if attempt < max_attempts - 1:
+                    print(f"Download failed, retrying... Error: {stderr[:100]}")
+                    continue
+                else:
+                    raise PipelineError(f"yt-dlp failed after {max_attempts} attempts: {stderr}")
+        
+        except subprocess.TimeoutExpired:
+            if attempt < max_attempts - 1:
+                print(f"Download timeout, retrying...")
+                continue
+            else:
+                raise PipelineError("Download timeout after 3 attempts (5 minutes each)")
+        except Exception as e:
+            if attempt < max_attempts - 1:
+                print(f"Download error, retrying... Error: {str(e)[:100]}")
+                continue
+            else:
+                raise PipelineError(f"Download error after {max_attempts} attempts: {str(e)}")
+    
+    # Should never reach here, but just in case
+    raise PipelineError(f"Download failed after {max_attempts} attempts")
 
 
 def transform_video(input_path: str, output_path: str) -> str:

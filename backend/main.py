@@ -24,7 +24,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:3000|https://viralityt-backend-production\.up\.railway\.app",
+    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:3000|https://viralityt-backend-production\.up\.railway\.app|https://viralityt\.es|https://www\.viralityt\.es",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

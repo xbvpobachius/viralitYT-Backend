@@ -124,10 +124,10 @@ export default function ThemesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="border-b/0">
+        <div className="container mx-auto px-4 py-6 flex items-center justify-between">
           <Link href="/">
-            <h1 className="text-2xl font-bold">Viralit-YT</h1>
+            <h1 className="text-2xl md:text-3xl font-extrabold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-red-400 via-red-500 to-red-600 drop-shadow-[0_0_12px_hsla(0,92%,62%,0.5)]">ViralitYT</h1>
           </Link>
           <div className="flex gap-2">
             <Link href="/dashboard">
@@ -148,13 +148,13 @@ export default function ThemesPage() {
           </div>
 
           {/* Controls */}
-          <Card>
+          <Card className="bg-card/40 backdrop-blur border-border/40">
             <CardHeader>
               <CardTitle>Scan & Select</CardTitle>
               <CardDescription>Choose a theme to scan for viral Shorts (≤60s)</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid md:grid-cols-4 gap-4">
+                <div className="grid md:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Theme</label>
                   <select
