@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     worker_batch_size: int = 5
     upload_visibility: str = "unlisted"
     max_retries: int = 3
+    # Supabase Storage (for user-uploaded videos)
+    supabase_url: str = ""
+    supabase_service_role: str = ""
+    supabase_bucket: str = "user-videos"
     # Temporary Google credentials
     temp_client_id: str = ""
     temp_client_secret: str = ""

@@ -1,7 +1,7 @@
 """
 FastAPI main application with all routes.
 """
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -239,6 +239,54 @@ async def list_videos(
         "videos": videos,
         "count": len(videos)
     }
+
+
+@app.post("/user-videos/upload")
+async def upload_user_video(
+    theme_slug: str = Form(...),
+    title: Optional[str] = Form(None),
+    file: UploadFile = File(...)
+):
+    """Upload a user-provided video to Supabase Storage and register it as a video."""
+    try:
+        import httpx
+        import uuid as _uuid
+
+        if not settings.supabase_url or not settings.supabase_service_role:
+            raise HTTPException(status_code=500, detail="Supabase not configured")
+
+        ext = ".mp4"
+        storage_id = _uuid.uuid4().hex
+        storage_path = f"user/{storage_id}{ext}"
+
+        storage_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/{settings.supabase_bucket}/{storage_path}"
+        headers = {
+            "Authorization": f"Bearer {settings.supabase_service_role}",
+            "apikey": settings.supabase_service_role,
+            "Content-Type": file.content_type or "video/mp4",
+        }
+        data = await file.read()
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(storage_url, headers=headers, content=data)
+            if resp.status_code not in (200, 201):
+                raise HTTPException(status_code=500, detail=f"Storage upload failed: {resp.status_code} {resp.text}")
+
+        source_id = f"user:{storage_path}"
+        video = await models.upsert_video(
+            source_video_id=source_id,
+            title=title or file.filename,
+            channel_title=None,
+            thumbnail_url=None,
+            views=None,
+            duration_seconds=None,
+            theme_slug=theme_slug
+        )
+
+        return {"video": video}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/videos/pick")

@@ -24,6 +24,28 @@ def download_video(video_id: str, output_path: str) -> str:
     import random
     import time
     
+    # Handle user-uploaded videos stored in Supabase Storage
+    if video_id.startswith('user:'):
+        try:
+            import httpx
+            storage_path = video_id.split(':', 1)[1]
+            storage_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/{settings.supabase_bucket}/{storage_path}"
+            headers = {
+                "Authorization": f"Bearer {settings.supabase_service_role}",
+                "apikey": settings.supabase_service_role,
+            }
+            with httpx.Client(timeout=60) as client:
+                r = client.get(storage_url, headers=headers)
+                if r.status_code != 200:
+                    raise PipelineError(f"Supabase download failed: {r.status_code} {r.text}")
+                with open(output_path, 'wb') as f:
+                    f.write(r.content)
+            if not os.path.exists(output_path):
+                raise PipelineError(f"Downloaded file not found: {output_path}")
+            return output_path
+        except Exception as e:
+            raise PipelineError(f"Supabase download error: {str(e)}")
+    
     # Default user agents to rotate if none configured
     default_user_agents = [
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
