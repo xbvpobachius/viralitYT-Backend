@@ -8,9 +8,12 @@ export default function HomePage() {
           <h1 className="text-3xl font-extrabold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-red-400 via-red-500 to-red-600 drop-shadow-[0_0_15px_hsla(0,92%,62%,0.6)]">
             ViralitYT
           </h1>
-          <Link href="/onboarding" className="bg-primary text-primary-foreground px-5 py-2.5 rounded-md hover:bg-primary/90 shadow-[0_0_20px_hsla(0,92%,62%,0.45)]">
+            <Link href="/onboarding" className="bg-primary text-primary-foreground px-5 py-2.5 rounded-md hover:bg-primary/90 shadow-[0_0_20px_hsla(0,92%,62%,0.45)]">
             Get Started
           </Link>
+            <Link href="/my-videos" className="border border-input/50 bg-secondary/40 backdrop-blur px-5 py-2.5 rounded-md hover:bg-secondary/60">
+              My Videos
+            </Link>
         </div>
       </header>
 

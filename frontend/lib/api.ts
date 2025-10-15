@@ -237,6 +237,20 @@ class APIClient {
   async getQuotaStatus() {
     return this.request<DashboardMetrics['quota']>('/quota/status')
   }
+
+  async uploadUserVideo(params: { theme_slug: string; title?: string; file: File }) {
+    const url = `${this.baseUrl}/user-videos/upload`
+    const form = new FormData()
+    form.append('theme_slug', params.theme_slug)
+    if (params.title) form.append('title', params.title)
+    form.append('file', params.file)
+    const resp = await fetch(url, { method: 'POST', body: form })
+    if (!resp.ok) {
+      const text = await resp.text()
+      throw new Error(`API error: ${resp.status} - ${text}`)
+    }
+    return resp.json() as Promise<{ video: Video }>
+  }
 }
 
 export const api = new APIClient(API_BASE)

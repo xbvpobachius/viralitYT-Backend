@@ -71,7 +71,7 @@ def download_video(video_id: str, output_path: str) -> str:
             
             cmd = [
                 settings.ytdlp_bin,
-                '-f', 'best[ext=mp4]',  # Best quality MP4
+                '-f', 'best[ext=mp4]/best',  # Prefer MP4, fallback to best available
                 '-o', output_path,
                 '--no-playlist',
                 '--quiet',
@@ -116,6 +116,33 @@ def download_video(video_id: str, output_path: str) -> str:
             stdout = result.stdout or ""
             
             # Check for specific error types
+            if 'Requested format is not available' in stderr or 'requested format is not available' in stderr.lower():
+                # Fallback: try recoding to mp4 from best available
+                try:
+                    fallback_cmd = [
+                        settings.ytdlp_bin,
+                        '-f', 'best',
+                        '--recode-video', 'mp4',
+                        '-o', output_path,
+                        '--no-playlist',
+                        '--quiet',
+                        '--no-warnings',
+                    ]
+                    if getattr(settings, 'ytdlp_use_ipv4', True):
+                        fallback_cmd += ['--force-ipv4']
+                    if getattr(settings, 'ytdlp_extractor_args', ''):
+                        fallback_cmd += ['--extractor-args', settings.ytdlp_extractor_args]
+                    if getattr(settings, 'ytdlp_retries', 0):
+                        fallback_cmd += ['--retries', str(settings.ytdlp_retries)]
+                    fallback_cmd += [f'https://www.youtube.com/watch?v={video_id}']
+                    recode = subprocess.run(fallback_cmd, capture_output=True, text=True, timeout=600)
+                    if recode.returncode == 0 and os.path.exists(output_path):
+                        return output_path
+                    else:
+                        # attach fallback stderr to primary error context
+                        stderr += f"\n[fallback recode stderr]\n{recode.stderr or ''}"
+                except Exception as fe:
+                    stderr += f"\n[fallback recode error] {fe}"
             if 'Sign in to confirm you' in stderr or 'cookies' in stderr.lower():
                 if attempt < max_attempts - 1:
                     print(f"Bot check detected, retrying with different user agent...")
