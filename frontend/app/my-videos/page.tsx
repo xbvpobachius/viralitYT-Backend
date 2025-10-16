@@ -45,29 +45,7 @@ export default function MyVideosPage() {
     }
   }
 
-  const handleSchedule = async () => {
-    if (!video || !selectedAccount || !scheduledFor) {
-      alert('Select account and schedule time')
-      return
-    }
-    setLoading(true)
-    try {
-      await api.pickVideo({
-        video_id: String(video.id),
-        account_id: selectedAccount,
-        scheduled_for: new Date(scheduledFor).toISOString(),
-      })
-      alert('Scheduled!')
-      setVideo(null)
-      setFile(null)
-      setTitle('')
-      setScheduledFor('')
-    } catch (e: any) {
-      alert(e.message)
-    } finally {
-      setLoading(false)
-    }
-  }
+  // scheduling handled in the "Schedule All" button below
 
   return (
     <div className="min-h-screen bg-background">
