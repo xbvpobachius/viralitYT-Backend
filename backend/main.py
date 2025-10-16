@@ -243,7 +243,7 @@ async def list_videos(
 
 @app.post("/user-videos/upload")
 async def upload_user_video(
-    theme_slug: str = Form(...),
+    theme_slug: Optional[str] = Form(None),
     title: Optional[str] = Form(None),
     file: UploadFile = File(...)
 ):
@@ -271,6 +271,22 @@ async def upload_user_video(
             if resp.status_code not in (200, 201):
                 raise HTTPException(status_code=500, detail=f"Storage upload failed: {resp.status_code} {resp.text}")
 
+        # Ensure theme exists (default to 'custom')
+        use_theme = theme_slug or 'custom'
+        try:
+            from deps import get_db
+            async with get_db() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO themes (slug, title)
+                    VALUES ($1, $2)
+                    ON CONFLICT (slug) DO NOTHING
+                    """,
+                    use_theme, use_theme.capitalize()
+                )
+        except Exception:
+            pass
+
         source_id = f"user:{storage_path}"
         video = await models.upsert_video(
             source_video_id=source_id,
@@ -279,14 +295,167 @@ async def upload_user_video(
             thumbnail_url=None,
             views=None,
             duration_seconds=None,
-            theme_slug=theme_slug
+            theme_slug=use_theme
         )
+        # Signed preview URL
+        preview_url = None
+        try:
+            import json
+            import httpx
+            sign_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/sign/{settings.supabase_bucket}/{storage_path}"
+            headers = {
+                "Authorization": f"Bearer {settings.supabase_service_role}",
+                "apikey": settings.supabase_service_role,
+                "Content-Type": "application/json",
+            }
+            body = {"expiresIn": 3600}
+            async with httpx.AsyncClient(timeout=15) as client:
+                s = await client.post(sign_url, headers=headers, content=json.dumps(body))
+                if s.status_code in (200, 201):
+                    data = s.json()
+                    if isinstance(data, dict) and 'signedURL' in data:
+                        preview_url = f"{settings.supabase_url.rstrip('/')}{data['signedURL']}"
+        except Exception:
+            preview_url = None
 
-        return {"video": video}
+        return {"video": video, "preview_url": preview_url}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/user-videos/upload-batch")
+async def upload_user_videos_batch(files: List[UploadFile] = File(...)):
+    """Upload multiple videos (MP4 or ZIP of MP4s). Returns list of {video, preview_url}."""
+    results = []
+    try:
+        import tempfile, zipfile, os as _os
+        for f in files:
+            if f.filename.lower().endswith('.zip'):
+                # Extract zip to temp and upload contained mp4s
+                data = await f.read()
+                with tempfile.TemporaryDirectory() as td:
+                    zpath = _os.path.join(td, 'in.zip')
+                    with open(zpath, 'wb') as zf:
+                        zf.write(data)
+                    with zipfile.ZipFile(zpath, 'r') as z:
+                        for name in z.namelist():
+                            if not name.lower().endswith('.mp4'):
+                                continue
+                            with z.open(name) as src:
+                                tmp = _os.path.join(td, _os.path.basename(name))
+                                with open(tmp, 'wb') as out:
+                                    out.write(src.read())
+                                # Re-upload via single endpoint logic
+                                with open(tmp, 'rb') as file_obj:
+                                    upf = UploadFile(filename=_os.path.basename(name), file=file_obj)
+                                    # call internal function path (reuse logic):
+                                    # FastAPI internal call not trivial; replicate minimal upload
+                                    import httpx, uuid as _uuid
+                                    storage_id = _uuid.uuid4().hex
+                                    storage_path = f"user/{storage_id}.mp4"
+                                    storage_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/{settings.supabase_bucket}/{storage_path}"
+                                    headers = {"Authorization": f"Bearer {settings.supabase_service_role}", "apikey": settings.supabase_service_role, "Content-Type": "video/mp4"}
+                                    with httpx.Client(timeout=60) as client:
+                                        r = client.post(storage_url, headers=headers, content=open(tmp, 'rb').read())
+                                        if r.status_code not in (200,201):
+                                            continue
+                                    # create video row
+                                    v = await models.upsert_video(
+                                        source_video_id=f"user:{storage_path}",
+                                        title=_os.path.basename(name),
+                                        channel_title=None,
+                                        thumbnail_url=None,
+                                        views=None,
+                                        duration_seconds=None,
+                                        theme_slug='custom'
+                                    )
+                                    # sign
+                                    preview_url = None
+                                    try:
+                                        import json
+                                        sign_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/sign/{settings.supabase_bucket}/{storage_path}"
+                                        headers2 = {"Authorization": f"Bearer {settings.supabase_service_role}", "apikey": settings.supabase_service_role, "Content-Type": "application/json"}
+                                        with httpx.Client(timeout=15) as client:
+                                            s = client.post(sign_url, headers=headers2, content=json.dumps({"expiresIn":3600}))
+                                            if s.status_code in (200,201):
+                                                data = s.json()
+                                                if isinstance(data, dict) and 'signedURL' in data:
+                                                    preview_url = f"{settings.supabase_url.rstrip('/')}{data['signedURL']}"
+                                    except Exception:
+                                        pass
+                                    results.append({"video": v, "preview_url": preview_url})
+            else:
+                # Single file
+                res = await upload_user_video(theme_slug=None, title=None, file=f)  # type: ignore
+                results.append(res)
+        return {"items": results, "count": len(results)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class BulkUserScheduleItem(BaseModel):
+    video_id: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+class BulkUserScheduleRequest(BaseModel):
+    account_id: str
+    start_datetime: datetime
+    cadence_per_day: int
+    items: List[BulkUserScheduleItem]
+
+
+@app.post("/uploads/schedule/user-bulk")
+async def schedule_user_bulk(request: BulkUserScheduleRequest):
+    """Schedule a list of user videos with cadence 1/2/3 per day from a start date."""
+    try:
+        from uuid import UUID as _UUID
+        account = await models.get_account(_UUID(request.account_id))
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        # Determine daily times
+        times = []
+        if request.cadence_per_day >= 1:
+            times.append(account.get('upload_time_1') or datetime.strptime('10:00:00','%H:%M:%S').time())
+        if request.cadence_per_day >= 2:
+            times.append(account.get('upload_time_2') or datetime.strptime('18:00:00','%H:%M:%S').time())
+        if request.cadence_per_day >= 3:
+            from datetime import time as _time
+            times.insert(1, _time(14,0,0))  # 14:00 intermedio
+        # Schedule
+        uploads = []
+        day_index = 0
+        slot_index = 0
+        for item in request.items:
+            schedule_date = (request.start_datetime.date())
+            from datetime import timedelta, datetime as _dt
+            schedule_date = request.start_datetime.date() + timedelta(days=day_index)
+            t = times[min(slot_index, len(times)-1)]
+            scheduled_for = _dt.combine(schedule_date, t)
+            # Advance slot/day
+            slot_index += 1
+            if slot_index >= len(times):
+                slot_index = 0
+                day_index += 1
+            # Create upload
+            up = await models.create_upload(
+                account_id=_UUID(request.account_id),
+                video_id=_UUID(item.video_id),
+                scheduled_for=scheduled_for,
+                title=item.title or '',
+                description=item.description or '',
+                tags=item.tags or []
+            )
+            uploads.append(up)
+        return {"success": True, "uploads": uploads, "count": len(uploads)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/videos/pick")

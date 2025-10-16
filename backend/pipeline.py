@@ -328,6 +328,25 @@ async def execute_pipeline(
         )
         print(f"[{run_id}] Uploaded: {result['url']}")
         
+        # Post-upload: auto-clean user source from Supabase Storage
+        if source_video_id.startswith('user:'):
+            try:
+                import httpx
+                storage_path = source_video_id.split(':', 1)[1]
+                delete_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/{settings.supabase_bucket}/{storage_path}"
+                headers = {
+                    "Authorization": f"Bearer {settings.supabase_service_role}",
+                    "apikey": settings.supabase_service_role,
+                }
+                with httpx.Client(timeout=30) as client:
+                    resp = client.delete(delete_url, headers=headers)
+                    if resp.status_code not in (200, 204):
+                        print(f"[{run_id}] Warning: Supabase delete failed {resp.status_code}: {resp.text}")
+                    else:
+                        print(f"[{run_id}] Supabase object deleted: {storage_path}")
+            except Exception as ce:
+                print(f"[{run_id}] Warning: Supabase cleanup error: {ce}")
+        
         return {
             'success': True,
             'run_id': run_id,
