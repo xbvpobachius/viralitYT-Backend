@@ -5,7 +5,7 @@ Runs continuously, polling for due jobs.
 import asyncio
 import signal
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from deps import settings, get_db_pool, close_db_pool
 from scheduler import process_batch
 from quotas import reset_all_quotas
@@ -18,6 +18,8 @@ class Worker:
         self.running = False
         self.poll_interval = settings.worker_poll_interval
         self.batch_size = settings.worker_batch_size
+        self.roblox_sync_interval = timedelta(minutes=30)
+        self.last_roblox_sync = datetime.min
     
     def handle_shutdown(self, signum, frame):
         """Handle graceful shutdown."""
@@ -56,6 +58,16 @@ class Worker:
             try:
                 now = datetime.utcnow()
                 print(f"\n[{now}] Checking for due uploads...")
+                
+                # Run Roblox automation periodically
+                if now - self.last_roblox_sync >= self.roblox_sync_interval:
+                    try:
+                        from roblox_scheduler import ensure_daily_roblox_video
+                        await ensure_daily_roblox_video(now)
+                    except Exception as exc:
+                        print(f"[{now}] Roblox automation error: {exc}")
+                    finally:
+                        self.last_roblox_sync = now
                 
                 # Check quota reset
                 await self.check_quota_reset()
