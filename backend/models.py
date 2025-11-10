@@ -125,7 +125,8 @@ async def create_account(
     theme_slug: str,
     refresh_token: str,
     api_project_id: UUID,
-    channel_id: Optional[str] = None
+    channel_id: Optional[str] = None,
+    generator_account_id: Optional[UUID] = None
 ) -> Dict[str, Any]:
     """Create a new YouTube account."""
     # Temporarily disabled encryption to avoid UTF-8 errors
@@ -134,11 +135,11 @@ async def create_account(
     async with get_db() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO accounts (display_name, channel_id, theme_slug, oauth_refresh_token, api_project_id)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, display_name, channel_id, theme_slug, active, api_project_id, created_at
+            INSERT INTO accounts (display_name, channel_id, theme_slug, oauth_refresh_token, api_project_id, generator_account_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, display_name, channel_id, theme_slug, active, api_project_id, generator_account_id, created_at
             """,
-            display_name, channel_id, theme_slug, encrypted_token, api_project_id
+            display_name, channel_id, theme_slug, encrypted_token, api_project_id, generator_account_id
         )
         return dict(row)
 
@@ -162,12 +163,54 @@ async def list_accounts() -> List[Dict[str, Any]]:
         rows = await conn.fetch(
             """
             SELECT id, display_name, channel_id, theme_slug, active,
-                   api_project_id, upload_time_1, upload_time_2, created_at
+                   api_project_id, upload_time_1, upload_time_2, generator_account_id, created_at
             FROM accounts
             ORDER BY created_at DESC
             """
         )
         return [dict(row) for row in rows]
+
+
+async def list_accounts_by_theme(theme_slug: str, *, active_only: bool = True) -> List[Dict[str, Any]]:
+    """List accounts filtered by theme slug."""
+    async with get_db() as conn:
+        if active_only:
+            rows = await conn.fetch(
+                """
+                SELECT *
+                FROM accounts
+                WHERE theme_slug = $1 AND active = true
+                ORDER BY created_at DESC
+                """,
+                theme_slug
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT *
+                FROM accounts
+                WHERE theme_slug = $1
+                ORDER BY created_at DESC
+                """,
+                theme_slug
+            )
+        return [dict(row) for row in rows]
+
+
+async def set_account_generator_id(account_id: UUID, generator_account_id: UUID) -> Dict[str, Any]:
+    """Attach a generator account reference to an existing account."""
+    async with get_db() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE accounts
+            SET generator_account_id = $2,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, generator_account_id
+            """,
+            account_id, generator_account_id
+        )
+        return dict(row) if row else {}
 
 
 async def update_account_status(account_id: UUID, active: bool) -> None:
@@ -187,23 +230,27 @@ async def upsert_video(
     thumbnail_url: Optional[str],
     views: Optional[int],
     duration_seconds: Optional[int],
-    theme_slug: str
+    theme_slug: str,
+    *,
+    source_platform: str = "youtube"
 ) -> Dict[str, Any]:
     """Insert or update a video."""
     async with get_db() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO videos (source_video_id, title, channel_title, thumbnail_url, views, duration_seconds, theme_slug)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO videos (source_platform, source_video_id, title, channel_title, thumbnail_url, views, duration_seconds, theme_slug)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (source_video_id) DO UPDATE
             SET title = EXCLUDED.title,
                 channel_title = EXCLUDED.channel_title,
                 thumbnail_url = EXCLUDED.thumbnail_url,
                 views = EXCLUDED.views,
-                duration_seconds = EXCLUDED.duration_seconds
+                duration_seconds = EXCLUDED.duration_seconds,
+                source_platform = EXCLUDED.source_platform,
+                theme_slug = EXCLUDED.theme_slug
             RETURNING *
             """,
-            source_video_id, title, channel_title, thumbnail_url, views, duration_seconds, theme_slug
+            source_platform, source_video_id, title, channel_title, thumbnail_url, views, duration_seconds, theme_slug
         )
         return dict(row)
 
@@ -245,6 +292,158 @@ async def mark_video_picked(video_id: UUID) -> None:
     """Mark a video as picked."""
     async with get_db() as conn:
         await conn.execute("UPDATE videos SET picked = true WHERE id = $1", video_id)
+
+
+async def has_account_used_primary(account_id: UUID, primary_video_id: str) -> bool:
+    """Check if an account already used a given primary clip."""
+    async with get_db() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT 1
+            FROM roblox_projects
+            WHERE account_id = $1
+              AND primary_video_id = $2
+            LIMIT 1
+            """,
+            account_id, primary_video_id
+        )
+        return row is not None
+
+
+async def get_account_uploads_between(
+    account_id: UUID,
+    start: datetime,
+    end: datetime,
+    statuses: Optional[List[str]] = None
+) -> List[Dict[str, Any]]:
+    """Fetch uploads for an account scheduled between two timestamps."""
+    async with get_db() as conn:
+        if statuses:
+            rows = await conn.fetch(
+                """
+                SELECT *
+                FROM uploads
+                WHERE account_id = $1
+                  AND scheduled_for BETWEEN $2 AND $3
+                  AND status = ANY($4::text[])
+                ORDER BY scheduled_for ASC
+                """,
+                account_id, start, end, statuses
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT *
+                FROM uploads
+                WHERE account_id = $1
+                  AND scheduled_for BETWEEN $2 AND $3
+                ORDER BY scheduled_for ASC
+                """,
+                account_id, start, end
+            )
+        return [dict(row) for row in rows]
+
+
+async def get_roblox_project(generator_project_id: UUID) -> Optional[Dict[str, Any]]:
+    """Retrieve a roblox project record if exists."""
+    async with get_db() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM roblox_projects WHERE generator_project_id = $1",
+            generator_project_id
+        )
+        return dict(row) if row else None
+
+
+async def insert_roblox_project(
+    generator_project_id: UUID,
+    account_id: UUID,
+    video_id: UUID,
+    storage_path: str,
+    video_url: str,
+    primary_video_id: Optional[str],
+    secondary_video_id: Optional[str],
+    status: str = "ready",
+    scheduled_for: Optional[datetime] = None,
+    upload_id: Optional[UUID] = None
+) -> Dict[str, Any]:
+    """Insert a roblox project linkage."""
+    async with get_db() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO roblox_projects (
+                generator_project_id,
+                account_id,
+                video_id,
+                upload_id,
+                storage_path,
+                video_url,
+                primary_video_id,
+                secondary_video_id,
+                status,
+                scheduled_for
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (generator_project_id) DO UPDATE
+            SET video_id = EXCLUDED.video_id,
+                upload_id = EXCLUDED.upload_id,
+                storage_path = EXCLUDED.storage_path,
+                video_url = EXCLUDED.video_url,
+                primary_video_id = EXCLUDED.primary_video_id,
+                secondary_video_id = EXCLUDED.secondary_video_id,
+                status = EXCLUDED.status,
+                scheduled_for = EXCLUDED.scheduled_for,
+                updated_at = NOW()
+            RETURNING *
+            """,
+            generator_project_id,
+            account_id,
+            video_id,
+            upload_id,
+            storage_path,
+            video_url,
+            primary_video_id,
+            secondary_video_id,
+            status,
+            scheduled_for
+        )
+        return dict(row)
+
+
+async def set_roblox_project_upload(
+    generator_project_id: UUID,
+    upload_id: UUID,
+    status: str,
+    scheduled_for: datetime
+) -> Optional[Dict[str, Any]]:
+    """Attach an upload to a roblox project."""
+    async with get_db() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE roblox_projects
+            SET upload_id = $2,
+                status = $3,
+                scheduled_for = $4,
+                updated_at = NOW()
+            WHERE generator_project_id = $1
+            RETURNING *
+            """,
+            generator_project_id, upload_id, status, scheduled_for
+        )
+        return dict(row) if row else None
+
+
+async def update_roblox_project_status_by_upload(upload_id: UUID, status: str) -> None:
+    """Update roblox project status using upload id."""
+    async with get_db() as conn:
+        await conn.execute(
+            """
+            UPDATE roblox_projects
+            SET status = $2,
+                updated_at = NOW()
+            WHERE upload_id = $1
+            """,
+            upload_id, status
+        )
 
 
 # Uploads
@@ -444,7 +643,7 @@ async def select_due_uploads(now: datetime, limit: int = 10) -> List[Dict[str, A
             FROM uploads u
             JOIN accounts a ON u.account_id = a.id
             JOIN videos v ON u.video_id = v.id
-            WHERE u.status = 'scheduled'
+            WHERE u.status IN ('scheduled', 'retry')
               AND u.scheduled_for <= $1
               AND a.active = true
             ORDER BY u.scheduled_for ASC

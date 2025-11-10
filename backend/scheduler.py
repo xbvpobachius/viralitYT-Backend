@@ -40,6 +40,7 @@ async def process_upload(upload: Dict[str, Any]) -> Dict[str, Any]:
         if not project:
             error = "No API projects with available quota"
             print(f"[{run_id}] {error}")
+            await models.update_roblox_project_status_by_upload(upload_id, 'paused')
             await models.update_upload_status(
                 upload_id,
                 status='paused',
@@ -82,6 +83,7 @@ async def process_upload(upload: Dict[str, Any]) -> Dict[str, Any]:
             run_id=run_id,
             youtube_video_id=result['video_id']
         )
+        await models.update_roblox_project_status_by_upload(upload_id, 'uploaded')
         
         print(f"[{run_id}] Upload {upload_id} completed: {result['url']}")
         
@@ -108,6 +110,7 @@ async def process_upload(upload: Dict[str, Any]) -> Dict[str, Any]:
                 error=error
             )
             should_retry = False
+            await models.update_roblox_project_status_by_upload(upload_id, 'failed')
         else:
             # Schedule retry
             await models.update_upload_status(
@@ -117,6 +120,7 @@ async def process_upload(upload: Dict[str, Any]) -> Dict[str, Any]:
                 error=error
             )
             should_retry = True
+            await models.update_roblox_project_status_by_upload(upload_id, 'retry')
         
         return {
             'success': False,
@@ -141,6 +145,7 @@ async def process_upload(upload: Dict[str, Any]) -> Dict[str, Any]:
                 error=error
             )
             should_retry = False
+            await models.update_roblox_project_status_by_upload(upload_id, 'failed')
         else:
             await models.update_upload_status(
                 upload_id,
@@ -149,6 +154,7 @@ async def process_upload(upload: Dict[str, Any]) -> Dict[str, Any]:
                 error=error
             )
             should_retry = True
+            await models.update_roblox_project_status_by_upload(upload_id, 'retry')
         
         return {
             'success': False,

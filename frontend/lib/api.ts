@@ -251,6 +251,33 @@ class APIClient {
     }
     return resp.json() as Promise<{ video: Video }>
   }
+
+  async uploadUserVideosBatch(files: File[]) {
+    const url = `${this.baseUrl}/user-videos/upload-batch`
+    const form = new FormData()
+    for (const f of files) form.append('files', f)
+    const resp = await fetch(url, { method: 'POST', body: form })
+    if (!resp.ok) {
+      const text = await resp.text()
+      throw new Error(`API error: ${resp.status} - ${text}`)
+    }
+    return resp.json() as Promise<{ items: Array<{ video: Video; preview_url?: string }>; count: number }>
+  }
+
+  async scheduleUserBulk(params: {
+    account_id: string
+    start_datetime: string
+    cadence_per_day: 1 | 2 | 3
+    items: Array<{ video_id: string; title?: string; description?: string; tags?: string[] }>
+  }) {
+    return this.request<{ success: boolean; uploads: Upload[]; count: number }>(
+      '/uploads/schedule/user-bulk',
+      {
+        method: 'POST',
+        body: JSON.stringify(params),
+      }
+    )
+  }
 }
 
 export const api = new APIClient(API_BASE)

@@ -25,11 +25,19 @@ def download_video(video_id: str, output_path: str) -> str:
     import time
     
     # Handle user-uploaded videos stored in Supabase Storage
-    if video_id.startswith('user:'):
+    if video_id.startswith(('user:', 'supabase:')):
         try:
             import httpx
-            storage_path = video_id.split(':', 1)[1]
-            storage_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/{settings.supabase_bucket}/{storage_path}"
+            storage_ref = video_id.split(':', 1)[1]
+            if video_id.startswith('supabase:'):
+                if '/' not in storage_ref:
+                    raise PipelineError("Supabase reference must include bucket and object path.")
+                bucket, object_path = storage_ref.split('/', 1)
+            else:
+                bucket = settings.supabase_bucket
+                object_path = storage_ref
+
+            storage_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/{bucket}/{object_path}"
             headers = {
                 "Authorization": f"Bearer {settings.supabase_service_role}",
                 "apikey": settings.supabase_service_role,

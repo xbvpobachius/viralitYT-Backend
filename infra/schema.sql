@@ -36,6 +36,7 @@ CREATE TABLE accounts (
   api_project_id UUID NOT NULL REFERENCES api_projects(id),
   upload_time_1 TIME NOT NULL DEFAULT '10:00:00',
   upload_time_2 TIME NOT NULL DEFAULT '18:00:00',
+  generator_account_id UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -62,6 +63,7 @@ CREATE TABLE videos (
 CREATE INDEX idx_videos_theme ON videos(theme_slug, created_at DESC);
 CREATE INDEX idx_videos_picked ON videos(picked, theme_slug);
 
+-- Roblox generator projects (tracks generated content assignments)
 -- Uploads (the job queue)
 CREATE TABLE uploads (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -110,6 +112,28 @@ CREATE TABLE quota_history (
 
 CREATE INDEX idx_quota_history_project ON quota_history(api_project_id, created_at DESC);
 
+-- Roblox generator projects (tracks generated content assignments)
+CREATE TABLE roblox_projects (
+  generator_project_id UUID PRIMARY KEY,
+  account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  video_id UUID NOT NULL REFERENCES videos(id),
+  upload_id UUID REFERENCES uploads(id),
+  storage_path TEXT NOT NULL,
+  video_url TEXT,
+  primary_video_id TEXT,
+  secondary_video_id TEXT,
+  status TEXT NOT NULL DEFAULT 'ready',
+  scheduled_for TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_roblox_projects_account_primary
+  ON roblox_projects(account_id, primary_video_id)
+  WHERE primary_video_id IS NOT NULL;
+
+CREATE INDEX idx_roblox_projects_status ON roblox_projects(status);
+
 -- Auto-update timestamps
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -123,5 +147,8 @@ CREATE TRIGGER update_accounts_updated_at BEFORE UPDATE ON accounts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_uploads_updated_at BEFORE UPDATE ON uploads
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_roblox_projects_updated_at BEFORE UPDATE ON roblox_projects
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
