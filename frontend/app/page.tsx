@@ -6,7 +6,7 @@ export default function HomePage() {
       <header className="border-b/0">
         <div className="container mx-auto px-4 py-6 flex items-center justify-between">
           <h1 className="text-3xl font-extrabold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-red-400 via-red-500 to-red-600 drop-shadow-[0_0_15px_hsla(0,92%,62%,0.6)]">
-            ViralitYT
+            ViralitYT × Roblox
           </h1>
             <Link href="/onboarding" className="bg-primary text-primary-foreground px-5 py-2.5 rounded-md hover:bg-primary/90 shadow-[0_0_20px_hsla(0,92%,62%,0.45)]">
             Get Started
@@ -24,10 +24,10 @@ export default function HomePage() {
         <div className="max-w-5xl mx-auto text-center space-y-10">
           <div className="space-y-4">
             <h2 className="text-5xl md:text-6xl font-extrabold tracking-tight drop-shadow-[0_0_30px_hsla(0,92%,62%,0.35)]">
-              Automate YouTube Shorts at Scale
+              Roblox Shorts Automation, End to End
             </h2>
             <p className="text-lg md:text-xl text-muted-foreground">
-              ViralitYT programa y publica Shorts en múltiples canales con rotación inteligente de cuota.
+              ViralitYT × Roblox genera y programa Shorts en múltiples cuentas conectadas, sin reutilizar clips por canal.
             </p>
           </div>
 
@@ -67,7 +67,7 @@ export default function HomePage() {
 
       <footer className="border-t/0 py-10">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground space-y-2">
-          <p>ViralitYT © 2025. Built with Next.js, FastAPI, and YouTube Data API v3.</p>
+          <p>ViralitYT × Roblox © 2025. Built with Next.js, FastAPI, Supabase y YouTube Data API v3.</p>
           <p>
             <a href="/privacy" className="hover:underline mr-4">Privacy Policy</a>
             <a href="/terms" className="hover:underline">Terms of Service</a>
