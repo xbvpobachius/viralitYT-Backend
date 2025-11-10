@@ -38,16 +38,19 @@ def _supabase_source_id(storage_path: str) -> str:
 
 
 def _next_schedule_datetime(account: Dict[str, Any], now: datetime) -> datetime:
-    """Compute the next upload datetime for the account (once per day)."""
-    upload_time = account.get("upload_time_1")
-    if not isinstance(upload_time, datetime) and upload_time:
-        # asyncpg returns time objects; keep as-is
-        pass
-    if not upload_time:
-        upload_time = time_cls(10, 0, 0)
-    candidate = datetime.combine(now.date(), upload_time)
+    """Compute the next upload datetime for the account (prefer same-day 18:00)."""
+    target_time = account.get("upload_time_1")
+    if isinstance(target_time, datetime):
+        target_time = target_time.time()
+    if not target_time:
+        target_time = time_cls(18, 0, 0)
+
+    candidate = datetime.combine(now.date(), target_time)
+
     if candidate <= now:
-        candidate += timedelta(days=1)
+        # If the preferred slot has passed, schedule ASAP (in roughly 5 minutes)
+        candidate = now + timedelta(minutes=5)
+
     return candidate
 
 
@@ -139,11 +142,8 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
 
             schedule_datetime = _next_schedule_datetime(account, now)
 
-            theme = await models.get_theme("roblox")
-            default_tags = theme.get("default_hashtags", []) if theme else []
-            description = "Video generado automáticamente. ¡Suscríbete para más Roblox! "
-            if default_tags:
-                description += " ".join(default_tags)
+            description = "Susbcribete! #pov #roblox"
+            default_tags = ["#pov", "#roblox"]
 
             upload = await models.create_upload(
                 account_id=account_id,
