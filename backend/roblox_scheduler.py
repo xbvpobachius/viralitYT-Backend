@@ -127,6 +127,10 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
             if primary_video_id and await models.has_account_used_primary(account_id, primary_video_id):
                 continue
 
+            secondary_video_id = project.get("secondary_video_id")
+            if secondary_video_id and await models.has_account_used_primary(account_id, secondary_video_id):
+                continue
+
             # Create or fetch video entry
             source_id = _supabase_source_id(storage_path)
             video_record = await models.upsert_video(

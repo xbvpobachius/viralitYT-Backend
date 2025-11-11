@@ -302,7 +302,10 @@ async def has_account_used_primary(account_id: UUID, primary_video_id: str) -> b
             SELECT 1
             FROM roblox_projects
             WHERE account_id = $1
-              AND primary_video_id = $2
+              AND (
+                    primary_video_id = $2
+                 OR secondary_video_id = $2
+              )
             LIMIT 1
             """,
             account_id, primary_video_id

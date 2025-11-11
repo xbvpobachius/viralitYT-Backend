@@ -9,6 +9,7 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from deps import settings
 import models
+from roblox_generator import RobloxGeneratorClient
 
 
 SCOPES = [
@@ -178,6 +179,31 @@ async def handle_oauth_callback(code: str, state: str) -> Dict[str, Any]:
         api_project_id=project_id,
         channel_id=channel_id
     )
+
+    # If this is a Roblox account, bootstrap the external generator immediately
+    if theme_slug == "roblox":
+        try:
+            generator_client = RobloxGeneratorClient()
+            generator_account = await generator_client.ensure_account(
+                account_id=account.get("generator_account_id"),
+                name=account.get("display_name") or channel_title,
+            )
+
+            generator_uuid = UUID(generator_account["id"])
+            if not account.get("generator_account_id"):
+                await models.set_account_generator_id(account["id"], generator_uuid)
+                account["generator_account_id"] = generator_uuid
+
+            in_progress = await generator_client.get_projects_by_status(
+                generator_uuid, ["generating", "processing"], limit=1
+            )
+            if not in_progress:
+                await generator_client.create_project(generator_uuid)
+        except ValueError:
+            # Supabase credentials missing; skip automatic bootstrap
+            pass
+        except Exception as exc:
+            print(f"[RobloxAutomation] Bootstrap failed for account {account['id']}: {exc}")
     
     return {
         "account": account,
