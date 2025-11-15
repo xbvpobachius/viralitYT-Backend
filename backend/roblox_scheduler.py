@@ -79,9 +79,11 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
         generator_client = RobloxGeneratorClient()
     except ValueError:
         # Supabase not configured; skip automation
+        print("[RobloxAutomation] Supabase not configured, skipping automation")
         return
 
     accounts = await models.list_accounts_by_theme("roblox", active_only=True)
+    print(f"[RobloxAutomation] Found {len(accounts)} active Roblox account(s) to check")
 
     for account in accounts:
         account_id: UUID = account["id"]
@@ -155,6 +157,7 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
         )
         if today_uploads:
             # Already has an upload scheduled for today, skip
+            print(f"[RobloxAutomation] Account {account_id} already has {len(today_uploads)} upload(s) scheduled for today, skipping")
             continue
 
         # Try to find a completed project that hasn't been scheduled yet
@@ -162,6 +165,7 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
             completed_projects = await generator_client.get_projects_by_status(
                 generator_account_id, PROJECT_STATUSES_READY, limit=20
             )
+            print(f"[RobloxAutomation] Found {len(completed_projects)} completed project(s) for account {account_id}")
         except Exception as exc:
             print(f"[RobloxAutomation] Failed to fetch projects for {account_id}: {exc}")
             completed_projects = []
@@ -201,6 +205,7 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
             )
 
             schedule_datetime = _next_schedule_datetime(account, now)
+            print(f"[RobloxAutomation] Scheduling upload for account {account_id} at {schedule_datetime}")
 
             description = "Susbcribete! #pov #roblox"
             default_tags = ["#pov", "#roblox"]
@@ -213,6 +218,7 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
                 description=description,
                 tags=default_tags,
             )
+            print(f"[RobloxAutomation] Created upload {upload['id']} for account {account_id}")
 
             await models.mark_video_picked(video_record["id"])
             await models.insert_roblox_project(
@@ -247,7 +253,9 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
 
             if not in_progress:
                 try:
-                    await generator_client.create_project(generator_account_id)
+                    print(f"[RobloxAutomation] No projects in progress for account {account_id}, creating new project...")
+                    new_project = await generator_client.create_project(generator_account_id)
+                    print(f"[RobloxAutomation] Created new project {new_project.get('id')} for account {account_id}")
                 except Exception as exc:
                     print(f"[RobloxAutomation] Failed to queue new project for {account_id}: {exc}")
 
