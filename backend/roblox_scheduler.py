@@ -252,20 +252,25 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
             project_scheduled = True
             break
 
-        # Ensure there is always a project in progress for next day
-        if not project_scheduled:
-            try:
-                in_progress = await generator_client.get_projects_by_status(
-                    generator_account_id, PROJECT_STATUSES_IN_PROGRESS, limit=1
-                )
-            except Exception:
-                in_progress = []
+        # Always ensure there is at least one project in progress for future days
+        # This ensures continuous video generation
+        try:
+            in_progress = await generator_client.get_projects_by_status(
+                generator_account_id, PROJECT_STATUSES_IN_PROGRESS, limit=5
+            )
+            print(f"[RobloxAutomation] Found {len(in_progress)} project(s) in progress for account {account_id}")
+        except Exception as exc:
+            print(f"[RobloxAutomation] Failed to check in-progress projects for {account_id}: {exc}")
+            in_progress = []
 
-            if not in_progress:
+        # Always maintain at least 2 projects in progress to ensure continuous generation
+        if len(in_progress) < 2:
+            projects_to_create = 2 - len(in_progress)
+            for i in range(projects_to_create):
                 try:
-                    print(f"[RobloxAutomation] No projects in progress for account {account_id}, creating new project...")
+                    print(f"[RobloxAutomation] Creating new project {i+1}/{projects_to_create} for account {account_id} to maintain buffer...")
                     new_project = await generator_client.create_project(generator_account_id)
                     print(f"[RobloxAutomation] Created new project {new_project.get('id')} for account {account_id}")
                 except Exception as exc:
-                    print(f"[RobloxAutomation] Failed to queue new project for {account_id}: {exc}")
+                    print(f"[RobloxAutomation] Failed to queue new project {i+1} for {account_id}: {exc}")
 
