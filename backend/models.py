@@ -357,6 +357,16 @@ async def get_roblox_project(generator_project_id: UUID) -> Optional[Dict[str, A
         return dict(row) if row else None
 
 
+async def get_roblox_project_by_upload(upload_id: UUID) -> Optional[Dict[str, Any]]:
+    """Retrieve a roblox project record by upload_id."""
+    async with get_db() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM roblox_projects WHERE upload_id = $1",
+            upload_id
+        )
+        return dict(row) if row else None
+
+
 async def insert_roblox_project(
     generator_project_id: UUID,
     account_id: UUID,
