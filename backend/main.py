@@ -590,6 +590,29 @@ async def get_quota_status():
     return status
 
 
+# Roblox automation endpoints
+@app.post("/roblox/trigger-scheduler")
+async def trigger_roblox_scheduler():
+    """Manually trigger the Roblox video scheduler to check for accounts and create projects."""
+    try:
+        from roblox_scheduler import ensure_daily_roblox_video
+        from datetime import datetime
+        now = datetime.utcnow()
+        await ensure_daily_roblox_video(now)
+        return {
+            "success": True,
+            "message": "Roblox scheduler executed successfully",
+            "timestamp": now.isoformat()
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 if __name__ == "__main__":
     import uvicorn
     import os

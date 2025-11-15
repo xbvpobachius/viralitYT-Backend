@@ -168,6 +168,7 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
         # Check if any scheduled uploads need videos generated
         needs_video_generation = False
         if today_uploads:
+            print(f"[RobloxAutomation] Checking {len(today_uploads)} upload(s) scheduled for today...")
             # Check if any of the scheduled uploads don't have a completed video yet
             for upload in today_uploads:
                 upload_scheduled_for = upload.get("scheduled_for")
@@ -175,18 +176,25 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
                     from dateutil import parser
                     upload_scheduled_for = parser.parse(upload_scheduled_for)
                 
+                print(f"[RobloxAutomation] Checking upload {upload.get('id')} scheduled for {upload_scheduled_for} (now: {now})")
+                
                 # If upload is scheduled for now or past, it needs a video immediately
                 if upload_scheduled_for <= now + timedelta(minutes=5):
                     # Check if this upload has a roblox_project with completed video
                     upload_id = upload.get("id")
                     try:
                         roblox_project = await models.get_roblox_project_by_upload(upload_id)
+                        print(f"[RobloxAutomation] Upload {upload_id} roblox_project: {roblox_project is not None}, video_url: {roblox_project.get('video_url') if roblox_project else None}")
                         if not roblox_project or not roblox_project.get("video_url"):
                             needs_video_generation = True
-                            print(f"[RobloxAutomation] Upload {upload_id} scheduled for {upload_scheduled_for} needs video generation (no video_url)")
+                            print(f"[RobloxAutomation] ✅ Upload {upload_id} scheduled for {upload_scheduled_for} needs video generation (no video_url)")
                             break
+                        else:
+                            print(f"[RobloxAutomation] Upload {upload_id} already has video_url, skipping")
                     except Exception as exc:
-                        print(f"[RobloxAutomation] Error checking upload {upload_id}: {exc}")
+                        print(f"[RobloxAutomation] ❌ Error checking upload {upload_id}: {exc}")
+                        import traceback
+                        traceback.print_exc()
                         needs_video_generation = True
                         break
         
