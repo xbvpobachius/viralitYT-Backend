@@ -175,6 +175,16 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
         is_scheduled_for_today = schedule_datetime.date() == now.date()
         is_scheduled_for_now = schedule_datetime <= now + timedelta(minutes=5)  # Within 5 minutes
         
+        # Check if there are projects currently being generated
+        try:
+            generating_projects = await generator_client.get_projects_by_status(
+                generator_account_id, ["generating"], limit=5
+            )
+            print(f"[RobloxAutomation] Found {len(generating_projects)} project(s) with status 'generating' for account {account_id}")
+        except Exception as exc:
+            print(f"[RobloxAutomation] Failed to check generating projects for {account_id}: {exc}")
+            generating_projects = []
+        
         # Try to find a completed project that hasn't been scheduled yet
         try:
             completed_projects = await generator_client.get_projects_by_status(
@@ -256,14 +266,19 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
             project_scheduled = True
             break
         
-        # If no completed project available but upload is scheduled for today/now, create one immediately
-        if not project_scheduled and (is_scheduled_for_today or is_scheduled_for_now):
-            try:
-                print(f"[RobloxAutomation] No completed projects available but upload scheduled for {'now' if is_scheduled_for_now else 'today'}, creating new project immediately...")
-                new_project = await generator_client.create_project(generator_account_id)
-                print(f"[RobloxAutomation] Created new project {new_project.get('id')} for account {account_id} to generate video for today")
-            except Exception as exc:
-                print(f"[RobloxAutomation] Failed to create urgent project for {account_id}: {exc}")
+        # CRITICAL: If upload is scheduled for today/now, ALWAYS ensure there's a project with status 'generating'
+        # This ensures the local generator has work to do immediately
+        if is_scheduled_for_today or is_scheduled_for_now:
+            if len(generating_projects) == 0:
+                try:
+                    print(f"[RobloxAutomation] Upload scheduled for {'now' if is_scheduled_for_now else 'today'} but no projects generating, creating new project immediately...")
+                    new_project = await generator_client.create_project(generator_account_id)
+                    print(f"[RobloxAutomation] ✅ Created new project {new_project.get('id')} with status 'generating' for account {account_id}")
+                    print(f"[RobloxAutomation] The local generator will pick this up and process it immediately")
+                except Exception as exc:
+                    print(f"[RobloxAutomation] ❌ Failed to create urgent project for {account_id}: {exc}")
+            else:
+                print(f"[RobloxAutomation] Upload scheduled for {'now' if is_scheduled_for_now else 'today'} and {len(generating_projects)} project(s) already generating - local generator will process them")
 
         # Always ensure there is at least one project in progress for future days
         # This ensures continuous video generation
