@@ -37,13 +37,14 @@ def _supabase_source_id(storage_path: str) -> str:
     return f"supabase:{storage_path}"
 
 
-def _next_schedule_datetime(account: Dict[str, Any], now: datetime) -> datetime:
+def _next_schedule_datetime(account: Dict[str, Any], now: datetime, has_upload_today: bool = False) -> datetime:
     """Compute the next upload datetime for the account.
     
     Rules:
     - Default target time is 18:00 (6 PM)
-    - If it's 19:00 (7 PM) or later but before midnight, schedule immediately
+    - If target time has passed today AND no upload today, schedule immediately (now)
     - If it's past midnight, wait until 18:00 the next day (not today)
+    - If target time hasn't passed today, schedule for today at target time
     """
     target_time = account.get("upload_time_1")
     if isinstance(target_time, datetime):
@@ -57,20 +58,20 @@ def _next_schedule_datetime(account: Dict[str, Any], now: datetime) -> datetime:
         # It's past midnight but before target time, wait until target time the next day
         return datetime.combine(now.date() + timedelta(days=1), target_time)
     
-    # Check if it's 7 PM (19:00) or later but before midnight
-    seven_pm = time_cls(19, 0, 0)
-    if now.time() >= seven_pm:
-        # Schedule immediately (now)
-        return now
+    # Check if target time has passed today
+    target_datetime_today = datetime.combine(now.date(), target_time)
     
-    # Try today at target time
-    candidate = datetime.combine(now.date(), target_time)
+    if target_datetime_today <= now:
+        # Target time has passed today
+        if not has_upload_today:
+            # No upload today, schedule immediately (now)
+            return now
+        else:
+            # Already has upload today, schedule for tomorrow at target time
+            return datetime.combine(now.date() + timedelta(days=1), target_time)
     
-    if candidate <= now:
-        # If the target time has passed today, schedule for tomorrow at the same time
-        candidate = datetime.combine(now.date() + timedelta(days=1), target_time)
-    
-    return candidate
+    # Target time hasn't passed yet today, schedule for today at target time
+    return target_datetime_today
 
 
 async def ensure_daily_roblox_video(now: datetime) -> None:
@@ -146,7 +147,7 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
         if not account.get("active", True):
             continue
         
-        # Check if there's already an upload scheduled for TODAY (only 1 per day)
+        # Check if there's already an upload scheduled/completed for TODAY (only 1 per day)
         today_start = datetime.combine(now.date(), time_cls(0, 0, 0))
         today_end = datetime.combine(now.date(), time_cls(23, 59, 59))
         today_uploads = await models.get_account_uploads_between(
@@ -155,9 +156,18 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
             today_end,
             statuses=UPLOAD_STATUS_ACTIVE,
         )
-        if today_uploads:
-            # Already has an upload scheduled for today, skip
-            print(f"[RobloxAutomation] Account {account_id} already has {len(today_uploads)} upload(s) scheduled for today, skipping")
+        # Also check for completed uploads today
+        today_completed = await models.get_account_uploads_between(
+            account_id,
+            today_start,
+            today_end,
+            statuses=["done"],
+        )
+        has_upload_today = len(today_uploads) > 0 or len(today_completed) > 0
+        
+        if has_upload_today:
+            # Already has an upload scheduled/completed for today, skip
+            print(f"[RobloxAutomation] Account {account_id} already has {len(today_uploads)} active upload(s) and {len(today_completed)} completed upload(s) for today, skipping")
             continue
 
         # Try to find a completed project that hasn't been scheduled yet
@@ -204,7 +214,7 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
                 source_platform="generator",
             )
 
-            schedule_datetime = _next_schedule_datetime(account, now)
+            schedule_datetime = _next_schedule_datetime(account, now, has_upload_today=False)
             print(f"[RobloxAutomation] Scheduling upload for account {account_id} at {schedule_datetime}")
 
             description = "Susbcribete! #pov #roblox"
