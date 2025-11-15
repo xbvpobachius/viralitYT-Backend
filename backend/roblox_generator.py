@@ -57,6 +57,19 @@ class RobloxGeneratorClient:
             return data[0]
         return None
 
+    async def get_account_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        """Fetch generator account by exact name match."""
+        params = {
+            "name": f"eq.{name}",
+            "select": "*",
+            "limit": 1,
+        }
+        response = await self._request("GET", "/rest/v1/accounts", params=params)
+        data = response.json()
+        if isinstance(data, list) and data:
+            return data[0]
+        return None
+
     async def create_account(self, name: str, background_url: Optional[str] = None) -> Dict[str, Any]:
         """Create a generator account."""
         payload = {"name": name}
@@ -75,10 +88,21 @@ class RobloxGeneratorClient:
         name: str,
         background_url: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Ensure a generator account exists; create if missing."""
+        """Ensure a generator account exists; create if missing, update background_url if provided."""
         if account_id:
             existing = await self.get_account(account_id)
             if existing:
+                # Update background_url if provided and different
+                if background_url is not None and existing.get("background_url") != background_url:
+                    try:
+                        await self._request(
+                            "PATCH",
+                            f"/rest/v1/accounts?id=eq.{account_id}",
+                            json={"background_url": background_url}
+                        )
+                        existing["background_url"] = background_url
+                    except Exception:
+                        pass  # Non-critical, continue with existing
                 return existing
         return await self.create_account(name, background_url)
 

@@ -38,19 +38,38 @@ def _supabase_source_id(storage_path: str) -> str:
 
 
 def _next_schedule_datetime(account: Dict[str, Any], now: datetime) -> datetime:
-    """Compute the next upload datetime for the account (prefer same-day 18:00)."""
+    """Compute the next upload datetime for the account.
+    
+    Rules:
+    - Default target time is 18:00 (6 PM)
+    - If it's 19:00 (7 PM) or later but before midnight, schedule immediately
+    - If it's past midnight, wait until 18:00 the next day (not today)
+    """
     target_time = account.get("upload_time_1")
     if isinstance(target_time, datetime):
         target_time = target_time.time()
     if not target_time:
-        target_time = time_cls(18, 0, 0)
+        target_time = time_cls(18, 0, 0)  # 6 PM default
 
+    # Check if it's past midnight (00:00) but before target time
+    midnight = time_cls(0, 0, 0)
+    if now.time() >= midnight and now.time() < target_time:
+        # It's past midnight but before target time, wait until target time the next day
+        return datetime.combine(now.date() + timedelta(days=1), target_time)
+    
+    # Check if it's 7 PM (19:00) or later but before midnight
+    seven_pm = time_cls(19, 0, 0)
+    if now.time() >= seven_pm:
+        # Schedule immediately (now)
+        return now
+    
+    # Try today at target time
     candidate = datetime.combine(now.date(), target_time)
-
+    
     if candidate <= now:
-        # If the preferred slot has passed, schedule ASAP (in roughly 5 minutes)
-        candidate = now + timedelta(minutes=5)
-
+        # If the target time has passed today, schedule for tomorrow at the same time
+        candidate = datetime.combine(now.date() + timedelta(days=1), target_time)
+    
     return candidate
 
 
@@ -68,13 +87,43 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
         account_id: UUID = account["id"]
         generator_account_id = account.get("generator_account_id")
 
-        # Ensure generator account exists
+        # Ensure generator account exists and get background_url if it exists
+        background_url = None
+        channel_name = account.get("display_name") or "Roblox Account"
+        
         try:
+            # First, try to find an account by name that matches the channel name
+            existing_by_name = await generator_client.get_account_by_name(channel_name)
+            if existing_by_name:
+                background_url = existing_by_name.get("background_url")
+                # If we found an account by name, use its ID
+                if not generator_account_id:
+                    generator_account_id = UUID(existing_by_name["id"])
+            
+            # If we have a generator_account_id, try to get it
+            if generator_account_id:
+                existing_gen_account = await generator_client.get_account(generator_account_id)
+                if existing_gen_account:
+                    # Use background_url from name match if available, otherwise from ID match
+                    if not background_url:
+                        background_url = existing_gen_account.get("background_url")
+            
             generator_account = await generator_client.ensure_account(
                 account_id=generator_account_id,
-                name=account.get("display_name") or "Roblox Account",
-                background_url=None,
+                name=channel_name,
+                background_url=background_url,
             )
+            # Update background_url if it was set
+            if background_url and generator_account.get("background_url") != background_url:
+                # Update the account in Supabase to sync background_url
+                try:
+                    await generator_client._request(
+                        "PATCH",
+                        f"/rest/v1/accounts?id=eq.{generator_account['id']}",
+                        json={"background_url": background_url}
+                    )
+                except Exception:
+                    pass  # Non-critical, continue
         except Exception as exc:
             print(f"[RobloxAutomation] Failed to ensure generator account for {account_id}: {exc}")
             continue
@@ -91,14 +140,21 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
         if isinstance(generator_account_id, str):
             generator_account_id = UUID(generator_account_id)
 
-        # Check existing upcoming uploads
-        upcoming_uploads = await models.get_account_uploads_between(
+        # Check if account is active (skip if paused)
+        if not account.get("active", True):
+            continue
+        
+        # Check if there's already an upload scheduled for TODAY (only 1 per day)
+        today_start = datetime.combine(now.date(), time_cls(0, 0, 0))
+        today_end = datetime.combine(now.date(), time_cls(23, 59, 59))
+        today_uploads = await models.get_account_uploads_between(
             account_id,
-            now,
-            now + timedelta(hours=LOOKAHEAD_HOURS),
+            today_start,
+            today_end,
             statuses=UPLOAD_STATUS_ACTIVE,
         )
-        if upcoming_uploads:
+        if today_uploads:
+            # Already has an upload scheduled for today, skip
             continue
 
         # Try to find a completed project that hasn't been scheduled yet
@@ -153,7 +209,7 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
                 account_id=account_id,
                 video_id=video_record["id"],
                 scheduled_for=schedule_datetime,
-                title=video_record.get("title") or "Roblox Short",
+                title=description,  # Title same as description
                 description=description,
                 tags=default_tags,
             )
