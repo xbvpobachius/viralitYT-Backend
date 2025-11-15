@@ -170,6 +170,11 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
             print(f"[RobloxAutomation] Account {account_id} already has {len(today_uploads)} active upload(s) and {len(today_completed)} completed upload(s) for today, skipping")
             continue
 
+        # Calculate when the upload should be scheduled
+        schedule_datetime = _next_schedule_datetime(account, now, has_upload_today=False)
+        is_scheduled_for_today = schedule_datetime.date() == now.date()
+        is_scheduled_for_now = schedule_datetime <= now + timedelta(minutes=5)  # Within 5 minutes
+        
         # Try to find a completed project that hasn't been scheduled yet
         try:
             completed_projects = await generator_client.get_projects_by_status(
@@ -214,7 +219,6 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
                 source_platform="generator",
             )
 
-            schedule_datetime = _next_schedule_datetime(account, now, has_upload_today=False)
             print(f"[RobloxAutomation] Scheduling upload for account {account_id} at {schedule_datetime}")
 
             description = "Susbcribete! #pov #roblox"
@@ -251,6 +255,15 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
 
             project_scheduled = True
             break
+        
+        # If no completed project available but upload is scheduled for today/now, create one immediately
+        if not project_scheduled and (is_scheduled_for_today or is_scheduled_for_now):
+            try:
+                print(f"[RobloxAutomation] No completed projects available but upload scheduled for {'now' if is_scheduled_for_now else 'today'}, creating new project immediately...")
+                new_project = await generator_client.create_project(generator_account_id)
+                print(f"[RobloxAutomation] Created new project {new_project.get('id')} for account {account_id} to generate video for today")
+            except Exception as exc:
+                print(f"[RobloxAutomation] Failed to create urgent project for {account_id}: {exc}")
 
         # Always ensure there is at least one project in progress for future days
         # This ensures continuous video generation
