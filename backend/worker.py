@@ -18,7 +18,7 @@ class Worker:
         self.running = False
         self.poll_interval = settings.worker_poll_interval
         self.batch_size = settings.worker_batch_size
-        self.roblox_sync_interval = timedelta(minutes=30)
+        self.roblox_sync_interval = timedelta(minutes=5)  # Reduced to 5 minutes for faster response
         self.last_roblox_sync = datetime.min
     
     def handle_shutdown(self, signum, frame):
@@ -53,6 +53,15 @@ class Worker:
         
         # Initialize database connection pool
         await get_db_pool()
+        
+        # Run Roblox automation immediately on startup
+        try:
+            from roblox_scheduler import ensure_daily_roblox_video
+            print(f"[{datetime.utcnow()}] Running initial Roblox automation check...")
+            await ensure_daily_roblox_video(datetime.utcnow())
+            self.last_roblox_sync = datetime.utcnow()
+        except Exception as exc:
+            print(f"[{datetime.utcnow()}] Initial Roblox automation error: {exc}")
         
         while self.running:
             try:
