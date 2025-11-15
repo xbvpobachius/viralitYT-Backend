@@ -183,10 +183,19 @@ async def handle_oauth_callback(code: str, state: str) -> Dict[str, Any]:
     # If this is a Roblox account, bootstrap the external generator immediately
     if theme_slug == "roblox":
         try:
+            from roblox_generator import RobloxGeneratorClient
             generator_client = RobloxGeneratorClient()
+            # Get background_url from existing generator account if it exists
+            background_url = None
+            if account.get("generator_account_id"):
+                existing_gen = await generator_client.get_account(account["generator_account_id"])
+                if existing_gen:
+                    background_url = existing_gen.get("background_url")
+            
             generator_account = await generator_client.ensure_account(
                 account_id=account.get("generator_account_id"),
                 name=account.get("display_name") or channel_title,
+                background_url=background_url,
             )
 
             generator_uuid = UUID(generator_account["id"])
