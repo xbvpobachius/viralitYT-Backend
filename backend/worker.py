@@ -4,10 +4,12 @@ Runs continuously, polling for due jobs.
 """
 import asyncio
 import signal
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as time_cls, timezone
 from deps import settings, get_db_pool, close_db_pool
 from scheduler import process_batch
 from quotas import reset_all_quotas
+
+SPAIN_OFFSET = timedelta(hours=1)  # UTC+1 per hora espanyola (ajustar horari estiu si cal)
 
 class Worker:
     """Background worker for upload processing."""
@@ -17,7 +19,7 @@ class Worker:
         self.poll_interval = settings.worker_poll_interval
         self.batch_size = settings.worker_batch_size
         self.roblox_sync_interval = timedelta(minutes=5)
-        self.last_roblox_sync = datetime.min
+        self.last_roblox_sync = datetime.min.replace(tzinfo=timezone.utc)
     
     def handle_shutdown(self, signum, frame):
         """Handle graceful shutdown."""
@@ -26,7 +28,7 @@ class Worker:
     
     async def check_quota_reset(self):
         """Check if it's time to reset daily quotas."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if now.hour == 0 and now.minute < 2:
             print(f"[{now}] Resetting daily quotas...")
             try:
@@ -52,7 +54,13 @@ class Worker:
         results = {'processed': 0, 'successful': 0, 'failed': 0, 'rescheduled': 0}
 
         for upload in uploads:
-            today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            # Hora actual aware UTC
+            now_utc = datetime.now(timezone.utc)
+            
+            # Data d'inici del dia UTC
+            today_start = datetime.combine(now_utc.date(), time_cls(0, 0, 0), tzinfo=timezone.utc)
+            
+            # Comptem quants uploads ja hi ha programats avui per aquesta compte
             query_count = """
                 SELECT COUNT(*) FROM uploads
                 WHERE account_id = $1
@@ -61,15 +69,16 @@ class Worker:
             scheduled_count = await db.fetchval(query_count, upload['account_id'], today_start)
             
             if scheduled_count > 0:
+                # Si ja hi ha un upload avui, reprogramem pel proper dia disponible
                 reschedule_day = scheduled_count
-                new_schedule = (today_start + timedelta(days=reschedule_day)).replace(hour=18)
+                new_schedule = (today_start + timedelta(days=reschedule_day)).replace(hour=17, minute=0, tzinfo=timezone.utc)
                 query_update = """
                     UPDATE uploads
                     SET status = 'skipped', scheduled_for = $1
                     WHERE id = $2
                 """
                 await db.execute(query_update, new_schedule, upload['id'])
-                print(f"[{datetime.utcnow()}] Upload {upload['id']} skipped, rescheduled for {new_schedule}")
+                print(f"[{now_utc}] Upload {upload['id']} skipped, rescheduled for {new_schedule}")
                 results['rescheduled'] += 1
                 continue
 
@@ -95,38 +104,42 @@ class Worker:
         
         try:
             from roblox_scheduler import ensure_daily_roblox_video
-            print(f"[{datetime.utcnow()}] Running initial Roblox automation check...")
-            await ensure_daily_roblox_video(datetime.utcnow())
-            self.last_roblox_sync = datetime.utcnow()
+            now_utc = datetime.now(timezone.utc)
+            print(f"[{now_utc}] Running initial Roblox automation check...")
+            await ensure_daily_roblox_video(now_utc)
+            self.last_roblox_sync = now_utc
         except Exception as exc:
-            print(f"[{datetime.utcnow()}] Initial Roblox automation error: {exc}")
+            print(f"[{datetime.now(timezone.utc)}] Initial Roblox automation error: {exc}")
         
         while self.running:
             try:
-                now = datetime.utcnow()
-                print(f"\n[{now}] Checking for due uploads...")
+                now_utc = datetime.now(timezone.utc)
+                print(f"\n[{now_utc}] Checking for due uploads...")
                 
-                if now - self.last_roblox_sync >= self.roblox_sync_interval:
+                # Roblox automation periòdica
+                if now_utc - self.last_roblox_sync >= self.roblox_sync_interval:
                     try:
                         from roblox_scheduler import ensure_daily_roblox_video
-                        await ensure_daily_roblox_video(now)
+                        await ensure_daily_roblox_video(now_utc)
                     except Exception as exc:
-                        print(f"[{now}] Roblox automation error: {exc}")
+                        print(f"[{now_utc}] Roblox automation error: {exc}")
                     finally:
-                        self.last_roblox_sync = now
+                        self.last_roblox_sync = now_utc
                 
+                # Comprova reset de quotes
                 await self.check_quota_reset()
                 
+                # Processa el batch amb la nova lògica
                 results = await self.process_batch_wrapper(self.batch_size)
                 
                 if results['processed'] > 0 or results['rescheduled'] > 0:
-                    print(f"[{now}] Batch processed:")
+                    print(f"[{now_utc}] Batch processed:")
                     print(f"  - Total: {results['processed'] + results['rescheduled']}")
                     print(f"  - Successful: {results['successful']}")
                     print(f"  - Failed: {results['failed']}")
                     print(f"  - Rescheduled (skipped): {results['rescheduled']}")
                 else:
-                    print(f"[{now}] No uploads due")
+                    print(f"[{now_utc}] No uploads due")
                 
                 if self.running:
                     await asyncio.sleep(self.poll_interval)
