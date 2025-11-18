@@ -56,6 +56,11 @@ class Worker:
         for upload in uploads:
             # Hora actual aware UTC
             now_utc = datetime.now(timezone.utc)
+
+            # Convertim scheduled_for a aware UTC si no ho és
+            scheduled_for = upload['scheduled_for']
+            if scheduled_for.tzinfo is None:
+                scheduled_for = scheduled_for.replace(tzinfo=timezone.utc)
             
             # Data d'inici del dia UTC
             today_start = datetime.combine(now_utc.date(), time_cls(0, 0, 0), tzinfo=timezone.utc)
@@ -81,6 +86,10 @@ class Worker:
                 print(f"[{now_utc}] Upload {upload['id']} skipped, rescheduled for {new_schedule}")
                 results['rescheduled'] += 1
                 continue
+
+            # Comprovem si l'upload ja està passat
+            if scheduled_for <= now_utc:
+                print(f"[{now_utc}] Upload {upload['id']} is due (scheduled: {scheduled_for})")
 
             # Processa l'upload amb la funció original
             res = await process_batch(specific_upload=upload)
