@@ -9,7 +9,7 @@ from quotas import reset_all_quotas
 SPAIN_OFFSET = timedelta(hours=1)  # UTC+1 por defecto, ajustar si hay horario de verano
 
 class Worker:
-    """Background worker for upload processing with detailed logging."""
+    """Background worker for upload processing with scheduled handling."""
 
     def __init__(self):
         self.running = False
@@ -33,14 +33,15 @@ class Worker:
                 print(f"[{now}] Error resetting quotas: {e}")
 
     async def get_due_uploads(self, db, limit):
+        """Return pending or scheduled uploads that are due."""
         query = """
             SELECT * FROM uploads
-            WHERE status = 'pending'
+            WHERE (status = 'pending' OR (status = 'scheduled' AND scheduled_for <= $1))
             ORDER BY scheduled_for ASC
-            LIMIT $1
+            LIMIT $2
         """
-        uploads = await db.fetch(query, limit)
-        print(f"[{datetime.now(timezone.utc)}] Found {len(uploads)} pending uploads:")
+        uploads = await db.fetch(query, datetime.now(timezone.utc), limit)
+        print(f"[{datetime.now(timezone.utc)}] Found {len(uploads)} pending/scheduled uploads:")
         for u in uploads:
             print(f"  - Upload ID {u['id']} | Account {u['account_id']} | Scheduled: {u['scheduled_for']} | Status: {u['status']}")
         return uploads
