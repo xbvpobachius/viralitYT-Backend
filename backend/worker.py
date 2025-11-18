@@ -33,19 +33,20 @@ class Worker:
                 print(f"[{now}] Error resetting quotas: {e}")
 
     async def get_due_uploads(self, db, limit):
-        """Return pending and due scheduled uploads."""
+        """Return pending and due scheduled uploads as mutable dicts."""
         query = """
             SELECT * FROM uploads
             WHERE status IN ('pending', 'scheduled')
             ORDER BY scheduled_for ASC
             LIMIT $1
         """
-        uploads = await db.fetch(query, limit)
+        records = await db.fetch(query, limit)
 
-        # Filtrar només els que ja són due (scheduled <= now)
         now_utc = datetime.now(timezone.utc)
-        due_uploads = []
-        for u in uploads:
+        uploads = []
+        for r in records:
+            # Convert Record to mutable dict
+            u = dict(r)
             scheduled_for = u['scheduled_for']
             if isinstance(scheduled_for, str):
                 if scheduled_for.endswith("Z"):
@@ -54,13 +55,15 @@ class Worker:
             if scheduled_for.tzinfo is None:
                 scheduled_for = scheduled_for.replace(tzinfo=timezone.utc)
             u['scheduled_for'] = scheduled_for
-            if scheduled_for <= now_utc or u['status'] == 'pending':
-                due_uploads.append(u)
 
-        print(f"[{now_utc}] Found {len(due_uploads)} pending/scheduled uploads:")
-        for u in due_uploads:
+            # Incloure només si és pending o ja és due
+            if scheduled_for <= now_utc or u['status'] == 'pending':
+                uploads.append(u)
+
+        print(f"[{now_utc}] Found {len(uploads)} pending/scheduled uploads:")
+        for u in uploads:
             print(f"  - Upload ID {u['id']} | Account {u['account_id']} | Scheduled: {u['scheduled_for']} | Status: {u['status']}")
-        return due_uploads
+        return uploads
 
     async def process_batch_wrapper(self, batch_size):
         db = await get_db_pool()
