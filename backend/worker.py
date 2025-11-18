@@ -33,6 +33,7 @@ class Worker:
                 print(f"[{now}] Error resetting quotas: {e}")
 
     async def get_due_uploads(self, db, limit):
+        """Return pending and due scheduled uploads."""
         query = """
             SELECT * FROM uploads
             WHERE status IN ('pending', 'scheduled')
@@ -40,10 +41,26 @@ class Worker:
             LIMIT $1
         """
         uploads = await db.fetch(query, limit)
-        print(f"[{datetime.now(timezone.utc)}] Found {len(uploads)} pending/scheduled uploads:")
+
+        # Filtrar només els que ja són due (scheduled <= now)
+        now_utc = datetime.now(timezone.utc)
+        due_uploads = []
         for u in uploads:
+            scheduled_for = u['scheduled_for']
+            if isinstance(scheduled_for, str):
+                if scheduled_for.endswith("Z"):
+                    scheduled_for = scheduled_for[:-1] + "+00:00"
+                scheduled_for = datetime.fromisoformat(scheduled_for)
+            if scheduled_for.tzinfo is None:
+                scheduled_for = scheduled_for.replace(tzinfo=timezone.utc)
+            u['scheduled_for'] = scheduled_for
+            if scheduled_for <= now_utc or u['status'] == 'pending':
+                due_uploads.append(u)
+
+        print(f"[{now_utc}] Found {len(due_uploads)} pending/scheduled uploads:")
+        for u in due_uploads:
             print(f"  - Upload ID {u['id']} | Account {u['account_id']} | Scheduled: {u['scheduled_for']} | Status: {u['status']}")
-        return uploads
+        return due_uploads
 
     async def process_batch_wrapper(self, batch_size):
         db = await get_db_pool()
@@ -54,20 +71,9 @@ class Worker:
             now_utc = datetime.now(timezone.utc)
             scheduled_for = upload['scheduled_for']
 
-            # Parse datetime if string
-            if isinstance(scheduled_for, str):
-                try:
-                    if scheduled_for.endswith("Z"):
-                        scheduled_for = scheduled_for[:-1] + "+00:00"
-                    scheduled_for = datetime.fromisoformat(scheduled_for)
-                except Exception:
-                    scheduled_for = datetime.strptime(scheduled_for, "%Y-%m-%d %H:%M:%S")
-
-            if scheduled_for.tzinfo is None:
-                scheduled_for = scheduled_for.replace(tzinfo=timezone.utc)
-
             print(f"[{now_utc}] Processing upload {upload['id']} | Scheduled: {scheduled_for} | Account: {upload['account_id']}")
 
+            # Comptar uploads del mateix compte avui
             today_start = datetime.combine(now_utc.date(), time_cls(0, 0, 0), tzinfo=timezone.utc)
             query_count = """
                 SELECT COUNT(*) FROM uploads
@@ -77,7 +83,7 @@ class Worker:
             scheduled_count = await db.fetchval(query_count, upload['account_id'], today_start)
             print(f"  - Scheduled uploads today for account {upload['account_id']}: {scheduled_count}")
 
-            # Skip if scheduled later today
+            # Reschedule si és massa aviat per l’hora
             if scheduled_for > now_utc and scheduled_count > 1:
                 reschedule_day = scheduled_count - 1
                 new_schedule = (today_start + timedelta(days=reschedule_day)).replace(hour=17, minute=0, tzinfo=timezone.utc)
@@ -91,18 +97,17 @@ class Worker:
                 results['rescheduled'] += 1
                 continue
 
-            # Process upload if scheduled time has arrived
-            if scheduled_for <= now_utc:
-                try:
-                    print(f"  - Upload {upload['id']} is due, processing now...")
-                    res = await process_batch(upload)  # aquí passem l’upload correctament
-                    results['processed'] += 1
-                    results['successful'] += res.get('successful', 0)
-                    results['failed'] += res.get('failed', 0)
-                    print(f"  - Upload {upload['id']} processed successfully | Success: {res.get('successful', 0)}, Failed: {res.get('failed', 0)}")
-                except Exception as e:
-                    print(f"  - Failed to process upload {upload['id']}: {e}")
-                    results['failed'] += 1
+            # Processar upload ja due
+            try:
+                print(f"  - Upload {upload['id']} is due, processing now...")
+                res = await process_batch(upload_id=upload['id'])
+                results['processed'] += 1
+                results['successful'] += res.get('successful', 0)
+                results['failed'] += res.get('failed', 0)
+                print(f"  - Upload {upload['id']} processed successfully | Success: {res.get('successful', 0)}, Failed: {res.get('failed', 0)}")
+            except Exception as e:
+                print(f"  - Failed to process upload {upload['id']}: {e}")
+                results['failed'] += 1
 
         return results
 
@@ -116,7 +121,7 @@ class Worker:
 
         await get_db_pool()
 
-        # Initial Roblox automation
+        # Inicialitzar Roblox automation
         try:
             from roblox_scheduler import ensure_daily_roblox_video
             now_utc = datetime.now(timezone.utc)
