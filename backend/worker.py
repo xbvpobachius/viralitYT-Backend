@@ -1,4 +1,3 @@
-# worker.py
 from __future__ import annotations
 import asyncio
 import signal
@@ -6,6 +5,7 @@ from datetime import datetime, timedelta, time as time_cls, timezone
 from deps import settings, get_db_pool, close_db_pool
 from scheduler import process_batch
 from quotas import reset_all_quotas
+from dateutil import parser
 
 SPAIN_OFFSET = timedelta(hours=1)  # UTC+1 por defecto, ajustar si hay horario de verano
 
@@ -36,7 +36,7 @@ class Worker:
                 print(f"[{now}] Error resetting quotas: {e}")
 
     async def get_due_uploads(self, db, limit):
-        """Retorna uploads pendientes sin procesar."""
+        """Return pending uploads ordered by scheduled time."""
         query = """
             SELECT * FROM uploads
             WHERE status = 'pending'
@@ -56,16 +56,16 @@ class Worker:
         for upload in uploads:
             now_utc = datetime.now(timezone.utc)
 
-            # Convert scheduled_for a aware UTC si no lo es
+            # Convert scheduled_for to aware datetime
             scheduled_for = upload['scheduled_for']
             if isinstance(scheduled_for, str):
-                from dateutil import parser
                 scheduled_for = parser.isoparse(scheduled_for)
             if scheduled_for.tzinfo is None:
                 scheduled_for = scheduled_for.replace(tzinfo=timezone.utc)
 
             today_start = datetime.combine(now_utc.date(), time_cls(0, 0, 0), tzinfo=timezone.utc)
 
+            # Check if account already has uploads today
             query_count = """
                 SELECT COUNT(*) FROM uploads
                 WHERE account_id = $1
@@ -75,7 +75,9 @@ class Worker:
 
             if scheduled_count > 0:
                 reschedule_day = scheduled_count
-                new_schedule = (today_start + timedelta(days=reschedule_day)).replace(hour=17, minute=0, tzinfo=timezone.utc)
+                new_schedule = (today_start + timedelta(days=reschedule_day)).replace(
+                    hour=17, minute=0, tzinfo=timezone.utc
+                )
                 query_update = """
                     UPDATE uploads
                     SET status = 'skipped', scheduled_for = $1
@@ -89,7 +91,7 @@ class Worker:
             if scheduled_for <= now_utc:
                 print(f"[{now_utc}] Upload {upload['id']} is due (scheduled: {scheduled_for})")
 
-            # Procesa el upload
+            # Process the upload
             try:
                 res = await process_batch(specific_upload=upload)
                 results['processed'] += 1
@@ -113,7 +115,7 @@ class Worker:
 
         await get_db_pool()
 
-        # Inicial Roblox automation
+        # Initial Roblox automation
         try:
             from roblox_scheduler import ensure_daily_roblox_video
             now_utc = datetime.now(timezone.utc)
@@ -141,7 +143,11 @@ class Worker:
                 await self.check_quota_reset()
                 results = await self.process_batch_wrapper(self.batch_size)
 
-                print(f"[{now_utc}] Batch summary: Processed={results['processed']}, Successful={results['successful']}, Failed={results['failed']}, Rescheduled={results['rescheduled']}")
+                print(
+                    f"[{now_utc}] Batch summary: "
+                    f"Processed={results['processed']}, Successful={results['successful']}, "
+                    f"Failed={results['failed']}, Rescheduled={results['rescheduled']}"
+                )
 
                 if self.running:
                     await asyncio.sleep(self.poll_interval)
