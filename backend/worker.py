@@ -45,7 +45,9 @@ class Worker:
             ORDER BY scheduled_for ASC
             LIMIT $1
         """
-        return await db.fetch(query, limit)
+        uploads = await db.fetch(query, limit)
+        print(f"[{datetime.now(timezone.utc)}] Found {len(uploads)} pending uploads")
+        return uploads
     
     async def process_batch_wrapper(self, batch_size):
         """Process batch with skipping logic and distribute multiple uploads across days."""
@@ -54,18 +56,15 @@ class Worker:
         results = {'processed': 0, 'successful': 0, 'failed': 0, 'rescheduled': 0}
 
         for upload in uploads:
-            # Hora actual aware UTC
             now_utc = datetime.now(timezone.utc)
 
             # Convertim scheduled_for a aware UTC si no ho és
             scheduled_for = upload['scheduled_for']
             if scheduled_for.tzinfo is None:
                 scheduled_for = scheduled_for.replace(tzinfo=timezone.utc)
-            
-            # Data d'inici del dia UTC
+
             today_start = datetime.combine(now_utc.date(), time_cls(0, 0, 0), tzinfo=timezone.utc)
             
-            # Comptem quants uploads ja hi ha programats avui per aquesta compte
             query_count = """
                 SELECT COUNT(*) FROM uploads
                 WHERE account_id = $1
@@ -74,7 +73,6 @@ class Worker:
             scheduled_count = await db.fetchval(query_count, upload['account_id'], today_start)
             
             if scheduled_count > 0:
-                # Si ja hi ha un upload avui, reprogramem pel proper dia disponible
                 reschedule_day = scheduled_count
                 new_schedule = (today_start + timedelta(days=reschedule_day)).replace(hour=17, minute=0, tzinfo=timezone.utc)
                 query_update = """
@@ -87,15 +85,19 @@ class Worker:
                 results['rescheduled'] += 1
                 continue
 
-            # Comprovem si l'upload ja està passat
             if scheduled_for <= now_utc:
                 print(f"[{now_utc}] Upload {upload['id']} is due (scheduled: {scheduled_for})")
 
-            # Processa l'upload amb la funció original
-            res = await process_batch(specific_upload=upload)
-            results['processed'] += 1
-            results['successful'] += res.get('successful', 0)
-            results['failed'] += res.get('failed', 0)
+            # Processa l'upload
+            try:
+                res = await process_batch(specific_upload=upload)
+                results['processed'] += 1
+                results['successful'] += res.get('successful', 0)
+                results['failed'] += res.get('failed', 0)
+                print(f"[{datetime.now(timezone.utc)}] Upload {upload['id']} processed successfully")
+            except Exception as e:
+                print(f"[{datetime.now(timezone.utc)}] Failed to process upload {upload['id']}: {e}")
+                results['failed'] += 1
 
         return results
 
@@ -105,9 +107,8 @@ class Worker:
         signal.signal(signal.SIGINT, self.handle_shutdown)
         signal.signal(signal.SIGTERM, self.handle_shutdown)
         
-        print(f"Worker starting...")
-        print(f"Poll interval: {self.poll_interval}s")
-        print(f"Batch size: {self.batch_size}")
+        print(f"[{datetime.now(timezone.utc)}] Worker starting...")
+        print(f"Poll interval: {self.poll_interval}s, Batch size: {self.batch_size}")
         
         await get_db_pool()
         
@@ -123,9 +124,8 @@ class Worker:
         while self.running:
             try:
                 now_utc = datetime.now(timezone.utc)
-                print(f"\n[{now_utc}] Checking for due uploads...")
+                print(f"[{now_utc}] Checking for due uploads...")
                 
-                # Roblox automation periòdica
                 if now_utc - self.last_roblox_sync >= self.roblox_sync_interval:
                     try:
                         from roblox_scheduler import ensure_daily_roblox_video
@@ -135,38 +135,29 @@ class Worker:
                     finally:
                         self.last_roblox_sync = now_utc
                 
-                # Comprova reset de quotes
                 await self.check_quota_reset()
                 
-                # Processa el batch amb la nova lògica
                 results = await self.process_batch_wrapper(self.batch_size)
                 
-                if results['processed'] > 0 or results['rescheduled'] > 0:
-                    print(f"[{now_utc}] Batch processed:")
-                    print(f"  - Total: {results['processed'] + results['rescheduled']}")
-                    print(f"  - Successful: {results['successful']}")
-                    print(f"  - Failed: {results['failed']}")
-                    print(f"  - Rescheduled (skipped): {results['rescheduled']}")
-                else:
-                    print(f"[{now_utc}] No uploads due")
+                print(f"[{now_utc}] Batch summary: Processed={results['processed']}, Successful={results['successful']}, Failed={results['failed']}, Rescheduled={results['rescheduled']}")
                 
                 if self.running:
                     await asyncio.sleep(self.poll_interval)
             
             except Exception as e:
-                print(f"Error in worker loop: {e}")
+                print(f"[{datetime.now(timezone.utc)}] Error in worker loop: {e}")
                 import traceback
                 traceback.print_exc()
                 if self.running:
                     await asyncio.sleep(30)
         
-        print("Closing database connections...")
+        print(f"[{datetime.now(timezone.utc)}] Closing database connections...")
         await close_db_pool()
-        print("Worker stopped.")
+        print(f"[{datetime.now(timezone.utc)}] Worker stopped.")
 
 async def main():
     worker = Worker()
     await worker.run()
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())
