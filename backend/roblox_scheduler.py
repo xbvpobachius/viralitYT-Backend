@@ -15,7 +15,6 @@ LOOKAHEAD_HOURS = 24
 
 
 def _extract_storage_path(public_url: str) -> Optional[str]:
-    """Convert a Supabase public URL into bucket/path reference."""
     if not public_url:
         return None
     try:
@@ -33,53 +32,46 @@ def _extract_storage_path(public_url: str) -> Optional[str]:
 
 
 def _supabase_source_id(storage_path: str) -> str:
-    """Build source identifier for Supabase-stored videos."""
     return f"supabase:{storage_path}"
 
 
+#  ┌──────────────────────────────────────────────────────┐
+#  │              *** FUNCIÓN FIXEADA ***                 │
+#  └──────────────────────────────────────────────────────┘
 def _next_schedule_datetime(account: Dict[str, Any], now: datetime, has_upload_today: bool = False) -> datetime:
-    """Compute the next upload datetime for the account.
-    
-    Rules:
-    - Default target time is 18:00 (6 PM)
-    - If target time has passed today AND no upload today, schedule immediately (now)
-    - If it's past midnight, wait until 18:00 the next day (not today)
-    - If target time hasn't passed today, schedule for today at target time
     """
+    Reglas correctas:
+    - Hora objetivo: 18:00 (si no está definida)
+    - Si AHORA < 18:00 → hoy a las 18:00
+    - Si AHORA >= 18:00 → mañana a las 18:00
+    - Si ya hay upload hoy → siempre mañana a las 18:00
+    """
+
+    # Obtener hora objetivo
     target_time = account.get("upload_time_1")
     if isinstance(target_time, datetime):
         target_time = target_time.time()
     if not target_time:
-        target_time = time_cls(18, 0, 0)  # 6 PM default
+        target_time = time_cls(18, 0, 0)  # 18:00 por defecto
 
-    # Check if it's past midnight (00:00) but before target time
-    midnight = time_cls(0, 0, 0)
-    if now.time() >= midnight and now.time() < target_time:
-        # It's past midnight but before target time, wait until target time the next day
+    target_today = datetime.combine(now.date(), target_time)
+
+    # Si ya hay upload hoy → siempre mañana
+    if has_upload_today:
         return datetime.combine(now.date() + timedelta(days=1), target_time)
-    
-    # Check if target time has passed today
-    target_datetime_today = datetime.combine(now.date(), target_time)
-    
-    if target_datetime_today <= now:
-        # Target time has passed today
-        if not has_upload_today:
-            # No upload today, schedule immediately (now)
-            return now
-        else:
-            # Already has upload today, schedule for tomorrow at target time
-            return datetime.combine(now.date() + timedelta(days=1), target_time)
-    
-    # Target time hasn't passed yet today, schedule for today at target time
-    return target_datetime_today
+
+    # Si aún no hemos llegado → hoy
+    if now < target_today:
+        return target_today
+
+    # Si ya pasó → mañana
+    return datetime.combine(now.date() + timedelta(days=1), target_time)
 
 
 async def ensure_daily_roblox_video(now: datetime) -> None:
-    """Ensure each Roblox account has a generated video scheduled per day."""
     try:
         generator_client = RobloxGeneratorClient()
     except ValueError:
-        # Supabase not configured; skip automation
         print("[RobloxAutomation] Supabase not configured, skipping automation")
         return
 
@@ -90,35 +82,29 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
         account_id: UUID = account["id"]
         generator_account_id = account.get("generator_account_id")
 
-        # Ensure generator account exists and get background_url if it exists
         background_url = None
         channel_name = account.get("display_name") or "Roblox Account"
-        
+
         try:
-            # First, try to find an account by name that matches the channel name
             existing_by_name = await generator_client.get_account_by_name(channel_name)
             if existing_by_name:
                 background_url = existing_by_name.get("background_url")
-                # If we found an account by name, use its ID
                 if not generator_account_id:
                     generator_account_id = UUID(existing_by_name["id"])
-            
-            # If we have a generator_account_id, try to get it
+
             if generator_account_id:
                 existing_gen_account = await generator_client.get_account(generator_account_id)
                 if existing_gen_account:
-                    # Use background_url from name match if available, otherwise from ID match
                     if not background_url:
                         background_url = existing_gen_account.get("background_url")
-            
+
             generator_account = await generator_client.ensure_account(
                 account_id=generator_account_id,
                 name=channel_name,
                 background_url=background_url,
             )
-            # Update background_url if it was set
+
             if background_url and generator_account.get("background_url") != background_url:
-                # Update the account in Supabase to sync background_url
                 try:
                     await generator_client._request(
                         "PATCH",
@@ -126,7 +112,8 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
                         json={"background_url": background_url}
                     )
                 except Exception:
-                    pass  # Non-critical, continue
+                    pass
+
         except Exception as exc:
             print(f"[RobloxAutomation] Failed to ensure generator account for {account_id}: {exc}")
             continue
@@ -143,44 +130,32 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
         if isinstance(generator_account_id, str):
             generator_account_id = UUID(generator_account_id)
 
-        # Check if account is active (skip if paused)
         if not account.get("active", True):
             continue
-        
-        # Check if there's already an upload scheduled/completed for TODAY (only 1 per day)
+
         today_start = datetime.combine(now.date(), time_cls(0, 0, 0))
         today_end = datetime.combine(now.date(), time_cls(23, 59, 59))
+
         today_uploads = await models.get_account_uploads_between(
-            account_id,
-            today_start,
-            today_end,
-            statuses=UPLOAD_STATUS_ACTIVE,
+            account_id, today_start, today_end, statuses=UPLOAD_STATUS_ACTIVE
         )
-        # Also check for completed uploads today
         today_completed = await models.get_account_uploads_between(
-            account_id,
-            today_start,
-            today_end,
-            statuses=["done"],
+            account_id, today_start, today_end, statuses=["done"]
         )
         has_upload_today = len(today_uploads) > 0 or len(today_completed) > 0
-        
-        # Check if any scheduled uploads need videos generated
+
         needs_video_generation = False
         if today_uploads:
             print(f"[RobloxAutomation] Checking {len(today_uploads)} upload(s) scheduled for today...")
-            # Check if any of the scheduled uploads don't have a completed video yet
             for upload in today_uploads:
                 upload_scheduled_for = upload.get("scheduled_for")
                 if isinstance(upload_scheduled_for, str):
                     from dateutil import parser
                     upload_scheduled_for = parser.parse(upload_scheduled_for)
-                
+
                 print(f"[RobloxAutomation] Checking upload {upload.get('id')} scheduled for {upload_scheduled_for} (now: {now})")
-                
-                # If upload is scheduled for now or past, it needs a video immediately
+
                 if upload_scheduled_for <= now + timedelta(minutes=5):
-                    # Check if this upload has a roblox_project with completed video
                     upload_id = upload.get("id")
                     try:
                         roblox_project = await models.get_roblox_project_by_upload(upload_id)
@@ -197,18 +172,15 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
                         traceback.print_exc()
                         needs_video_generation = True
                         break
-        
+
         if has_upload_today and not needs_video_generation:
-            # Already has an upload scheduled/completed for today with video available, skip
-            print(f"[RobloxAutomation] Account {account_id} already has {len(today_uploads)} active upload(s) and {len(today_completed)} completed upload(s) for today with videos available, skipping")
+            print(f"[RobloxAutomation] Account {account_id} already has uploads for today, skipping")
             continue
 
-        # Calculate when the upload should be scheduled
         schedule_datetime = _next_schedule_datetime(account, now, has_upload_today=has_upload_today)
         is_scheduled_for_today = schedule_datetime.date() == now.date()
-        is_scheduled_for_now = schedule_datetime <= now + timedelta(minutes=5)  # Within 5 minutes
-        
-        # If needs_video_generation, check the actual scheduled upload time
+        is_scheduled_for_now = schedule_datetime <= now + timedelta(minutes=5)
+
         if needs_video_generation and today_uploads:
             earliest_upload = min(today_uploads, key=lambda u: u.get("scheduled_for", now))
             upload_time = earliest_upload.get("scheduled_for")
@@ -217,8 +189,7 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
                 upload_time = parser.parse(upload_time)
             is_scheduled_for_today = upload_time.date() == now.date()
             is_scheduled_for_now = upload_time <= now + timedelta(minutes=5)
-        
-        # Check if there are projects currently being generated
+
         try:
             generating_projects = await generator_client.get_projects_by_status(
                 generator_account_id, ["generating"], limit=5
@@ -227,8 +198,7 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
         except Exception as exc:
             print(f"[RobloxAutomation] Failed to check generating projects for {account_id}: {exc}")
             generating_projects = []
-        
-        # Try to find a completed project that hasn't been scheduled yet
+
         try:
             completed_projects = await generator_client.get_projects_by_status(
                 generator_account_id, PROJECT_STATUSES_READY, limit=20
@@ -240,7 +210,7 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
 
         project_scheduled = False
 
-        for project in reversed(completed_projects):  # process oldest first
+        for project in reversed(completed_projects):
             project_id = UUID(project["id"])
 
             existing = await models.get_roblox_project(project_id)
@@ -259,7 +229,6 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
             if secondary_video_id and await models.has_account_used_primary(account_id, secondary_video_id):
                 continue
 
-            # Create or fetch video entry
             source_id = _supabase_source_id(storage_path)
             video_record = await models.upsert_video(
                 source_video_id=source_id,
@@ -281,7 +250,7 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
                 account_id=account_id,
                 video_id=video_record["id"],
                 scheduled_for=schedule_datetime,
-                title=description,  # Title same as description
+                title=description,
                 description=description,
                 tags=default_tags,
             )
@@ -308,9 +277,7 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
 
             project_scheduled = True
             break
-        
-        # CRITICAL: If upload needs video generation OR is scheduled for today/now, ALWAYS ensure there's a project with status 'generating'
-        # This ensures the local generator has work to do immediately
+
         if needs_video_generation or is_scheduled_for_today or is_scheduled_for_now:
             if len(generating_projects) == 0:
                 try:
@@ -325,8 +292,6 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
                 reason = "needs video generation" if needs_video_generation else ("now" if is_scheduled_for_now else "today")
                 print(f"[RobloxAutomation] Upload {reason} and {len(generating_projects)} project(s) already generating - local generator will process them")
 
-        # Always ensure there is at least one project in progress for future days
-        # This ensures continuous video generation
         try:
             in_progress = await generator_client.get_projects_by_status(
                 generator_account_id, PROJECT_STATUSES_IN_PROGRESS, limit=5
@@ -336,7 +301,6 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
             print(f"[RobloxAutomation] Failed to check in-progress projects for {account_id}: {exc}")
             in_progress = []
 
-        # Always maintain at least 2 projects in progress to ensure continuous generation
         if len(in_progress) < 2:
             projects_to_create = 2 - len(in_progress)
             for i in range(projects_to_create):
@@ -346,4 +310,3 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
                     print(f"[RobloxAutomation] Created new project {new_project.get('id')} for account {account_id}")
                 except Exception as exc:
                     print(f"[RobloxAutomation] Failed to queue new project {i+1} for {account_id}: {exc}")
-
