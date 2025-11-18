@@ -33,14 +33,13 @@ class Worker:
                 print(f"[{now}] Error resetting quotas: {e}")
 
     async def get_due_uploads(self, db, limit):
-        """Return pending or scheduled uploads that are due."""
         query = """
             SELECT * FROM uploads
-            WHERE (status = 'pending' OR (status = 'scheduled' AND scheduled_for <= $1))
+            WHERE status IN ('pending', 'scheduled')
             ORDER BY scheduled_for ASC
-            LIMIT $2
+            LIMIT $1
         """
-        uploads = await db.fetch(query, datetime.now(timezone.utc), limit)
+        uploads = await db.fetch(query, limit)
         print(f"[{datetime.now(timezone.utc)}] Found {len(uploads)} pending/scheduled uploads:")
         for u in uploads:
             print(f"  - Upload ID {u['id']} | Account {u['account_id']} | Scheduled: {u['scheduled_for']} | Status: {u['status']}")
@@ -78,6 +77,7 @@ class Worker:
             scheduled_count = await db.fetchval(query_count, upload['account_id'], today_start)
             print(f"  - Scheduled uploads today for account {upload['account_id']}: {scheduled_count}")
 
+            # Skip if scheduled later today
             if scheduled_for > now_utc and scheduled_count > 1:
                 reschedule_day = scheduled_count - 1
                 new_schedule = (today_start + timedelta(days=reschedule_day)).replace(hour=17, minute=0, tzinfo=timezone.utc)
@@ -91,10 +91,11 @@ class Worker:
                 results['rescheduled'] += 1
                 continue
 
+            # Process upload if scheduled time has arrived
             if scheduled_for <= now_utc:
                 try:
                     print(f"  - Upload {upload['id']} is due, processing now...")
-                    res = await process_batch(specific_upload=upload)
+                    res = await process_batch(upload)  # aquí passem l’upload correctament
                     results['processed'] += 1
                     results['successful'] += res.get('successful', 0)
                     results['failed'] += res.get('failed', 0)
