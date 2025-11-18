@@ -6,7 +6,7 @@ import asyncio
 import signal
 from datetime import datetime, timedelta
 from deps import settings, get_db_pool, close_db_pool
-from scheduler import process_batch as original_process_batch
+from scheduler import process_batch
 from quotas import reset_all_quotas
 
 class Worker:
@@ -27,7 +27,7 @@ class Worker:
     async def check_quota_reset(self):
         """Check if it's time to reset daily quotas."""
         now = datetime.utcnow()
-        if now.hour == 0 and now.minute < 2:  # Within first 2 minutes of midnight
+        if now.hour == 0 and now.minute < 2:
             print(f"[{now}] Resetting daily quotas...")
             try:
                 await reset_all_quotas()
@@ -35,24 +35,32 @@ class Worker:
             except Exception as e:
                 print(f"[{now}] Error resetting quotas: {e}")
     
+    async def get_due_uploads(self, db, limit):
+        """Retorna uploads pendents sense processar."""
+        query = """
+            SELECT * FROM uploads
+            WHERE status = 'pending'
+            ORDER BY scheduled_for ASC
+            LIMIT $1
+        """
+        return await db.fetch(query, limit)
+    
     async def process_batch_wrapper(self, batch_size):
         """Process batch with skipping logic and distribute multiple uploads across days."""
         db = await get_db_pool()
-        uploads = await original_process_batch(batch_size, fetch_only=True)  # fetch_only=True returns uploads without processing
+        uploads = await self.get_due_uploads(db, batch_size)
         results = {'processed': 0, 'successful': 0, 'failed': 0, 'rescheduled': 0}
 
         for upload in uploads:
-            # Comprova quants uploads ja hi ha programats avui o més endavant per la mateixa compte
             today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-            query = """
+            query_count = """
                 SELECT COUNT(*) FROM uploads
                 WHERE account_id = $1
                   AND scheduled_for >= $2
             """
-            scheduled_count = await db.fetchval(query, upload.account_id, today_start)
+            scheduled_count = await db.fetchval(query_count, upload['account_id'], today_start)
             
             if scheduled_count > 0:
-                # Reprograma per demà + N dies segons quants ja hi ha
                 reschedule_day = scheduled_count
                 new_schedule = (today_start + timedelta(days=reschedule_day)).replace(hour=18)
                 query_update = """
@@ -60,13 +68,13 @@ class Worker:
                     SET status = 'skipped', scheduled_for = $1
                     WHERE id = $2
                 """
-                await db.execute(query_update, new_schedule, upload.id)
-                print(f"[{datetime.utcnow()}] Upload {upload.id} skipped, rescheduled for {new_schedule}")
+                await db.execute(query_update, new_schedule, upload['id'])
+                print(f"[{datetime.utcnow()}] Upload {upload['id']} skipped, rescheduled for {new_schedule}")
                 results['rescheduled'] += 1
                 continue
 
-            # Processa l'upload normalment
-            res = await original_process_batch(batch_size, specific_upload=upload)
+            # Processa l'upload amb la funció original
+            res = await process_batch(specific_upload=upload)
             results['processed'] += 1
             results['successful'] += res.get('successful', 0)
             results['failed'] += res.get('failed', 0)
@@ -98,7 +106,6 @@ class Worker:
                 now = datetime.utcnow()
                 print(f"\n[{now}] Checking for due uploads...")
                 
-                # Roblox automation periòdica
                 if now - self.last_roblox_sync >= self.roblox_sync_interval:
                     try:
                         from roblox_scheduler import ensure_daily_roblox_video
@@ -108,10 +115,8 @@ class Worker:
                     finally:
                         self.last_roblox_sync = now
                 
-                # Comprova reset de quotes
                 await self.check_quota_reset()
                 
-                # Processa el batch amb la nova lògica
                 results = await self.process_batch_wrapper(self.batch_size)
                 
                 if results['processed'] > 0 or results['rescheduled'] > 0:
@@ -138,7 +143,6 @@ class Worker:
         print("Worker stopped.")
 
 async def main():
-    """Entry point for worker."""
     worker = Worker()
     await worker.run()
 
