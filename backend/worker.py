@@ -4,12 +4,10 @@ Runs continuously, polling for due jobs.
 """
 import asyncio
 import signal
-import sys
 from datetime import datetime, timedelta
 from deps import settings, get_db_pool, close_db_pool
-from scheduler import process_batch
+from scheduler import process_batch as original_process_batch
 from quotas import reset_all_quotas
-
 
 class Worker:
     """Background worker for upload processing."""
@@ -18,7 +16,7 @@ class Worker:
         self.running = False
         self.poll_interval = settings.worker_poll_interval
         self.batch_size = settings.worker_batch_size
-        self.roblox_sync_interval = timedelta(minutes=5)  # Reduced to 5 minutes for faster response
+        self.roblox_sync_interval = timedelta(minutes=5)
         self.last_roblox_sync = datetime.min
     
     def handle_shutdown(self, signum, frame):
@@ -29,8 +27,6 @@ class Worker:
     async def check_quota_reset(self):
         """Check if it's time to reset daily quotas."""
         now = datetime.utcnow()
-        
-        # Reset at midnight UTC
         if now.hour == 0 and now.minute < 2:  # Within first 2 minutes of midnight
             print(f"[{now}] Resetting daily quotas...")
             try:
@@ -39,11 +35,47 @@ class Worker:
             except Exception as e:
                 print(f"[{now}] Error resetting quotas: {e}")
     
+    async def process_batch_wrapper(self, batch_size):
+        """Process batch with skipping logic and distribute multiple uploads across days."""
+        db = await get_db_pool()
+        uploads = await original_process_batch(batch_size, fetch_only=True)  # fetch_only=True returns uploads without processing
+        results = {'processed': 0, 'successful': 0, 'failed': 0, 'rescheduled': 0}
+
+        for upload in uploads:
+            # Comprova quants uploads ja hi ha programats avui o més endavant per la mateixa compte
+            today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            query = """
+                SELECT COUNT(*) FROM uploads
+                WHERE account_id = $1
+                  AND scheduled_for >= $2
+            """
+            scheduled_count = await db.fetchval(query, upload.account_id, today_start)
+            
+            if scheduled_count > 0:
+                # Reprograma per demà + N dies segons quants ja hi ha
+                reschedule_day = scheduled_count
+                new_schedule = (today_start + timedelta(days=reschedule_day)).replace(hour=18)
+                query_update = """
+                    UPDATE uploads
+                    SET status = 'skipped', scheduled_for = $1
+                    WHERE id = $2
+                """
+                await db.execute(query_update, new_schedule, upload.id)
+                print(f"[{datetime.utcnow()}] Upload {upload.id} skipped, rescheduled for {new_schedule}")
+                results['rescheduled'] += 1
+                continue
+
+            # Processa l'upload normalment
+            res = await original_process_batch(batch_size, specific_upload=upload)
+            results['processed'] += 1
+            results['successful'] += res.get('successful', 0)
+            results['failed'] += res.get('failed', 0)
+
+        return results
+
     async def run(self):
         """Main worker loop."""
         self.running = True
-        
-        # Set up signal handlers
         signal.signal(signal.SIGINT, self.handle_shutdown)
         signal.signal(signal.SIGTERM, self.handle_shutdown)
         
@@ -51,10 +83,8 @@ class Worker:
         print(f"Poll interval: {self.poll_interval}s")
         print(f"Batch size: {self.batch_size}")
         
-        # Initialize database connection pool
         await get_db_pool()
         
-        # Run Roblox automation immediately on startup
         try:
             from roblox_scheduler import ensure_daily_roblox_video
             print(f"[{datetime.utcnow()}] Running initial Roblox automation check...")
@@ -68,7 +98,7 @@ class Worker:
                 now = datetime.utcnow()
                 print(f"\n[{now}] Checking for due uploads...")
                 
-                # Run Roblox automation periodically
+                # Roblox automation periòdica
                 if now - self.last_roblox_sync >= self.roblox_sync_interval:
                     try:
                         from roblox_scheduler import ensure_daily_roblox_video
@@ -78,22 +108,21 @@ class Worker:
                     finally:
                         self.last_roblox_sync = now
                 
-                # Check quota reset
+                # Comprova reset de quotes
                 await self.check_quota_reset()
                 
-                # Process batch of uploads
-                results = await process_batch(self.batch_size)
+                # Processa el batch amb la nova lògica
+                results = await self.process_batch_wrapper(self.batch_size)
                 
-                if results['processed'] > 0:
+                if results['processed'] > 0 or results['rescheduled'] > 0:
                     print(f"[{now}] Batch processed:")
-                    print(f"  - Total: {results['processed']}")
+                    print(f"  - Total: {results['processed'] + results['rescheduled']}")
                     print(f"  - Successful: {results['successful']}")
                     print(f"  - Failed: {results['failed']}")
-                    print(f"  - Retrying: {results['retrying']}")
+                    print(f"  - Rescheduled (skipped): {results['rescheduled']}")
                 else:
                     print(f"[{now}] No uploads due")
                 
-                # Sleep until next poll
                 if self.running:
                     await asyncio.sleep(self.poll_interval)
             
@@ -101,23 +130,17 @@ class Worker:
                 print(f"Error in worker loop: {e}")
                 import traceback
                 traceback.print_exc()
-                
-                # Sleep before retrying
                 if self.running:
                     await asyncio.sleep(30)
         
-        # Cleanup
         print("Closing database connections...")
         await close_db_pool()
         print("Worker stopped.")
-
 
 async def main():
     """Entry point for worker."""
     worker = Worker()
     await worker.run()
 
-
 if __name__ == "__main__":
     asyncio.run(main())
-
