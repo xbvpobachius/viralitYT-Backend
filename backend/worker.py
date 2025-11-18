@@ -9,7 +9,7 @@ from quotas import reset_all_quotas
 SPAIN_OFFSET = timedelta(hours=1)  # UTC+1 por defecto, ajustar si hay horario de verano
 
 class Worker:
-    """Background worker for upload processing."""
+    """Background worker for upload processing with detailed logging."""
 
     def __init__(self):
         self.running = False
@@ -19,12 +19,10 @@ class Worker:
         self.last_roblox_sync = datetime.min.replace(tzinfo=timezone.utc)
 
     def handle_shutdown(self, signum, frame):
-        """Handle graceful shutdown."""
         print(f"\nReceived signal {signum}, shutting down gracefully...")
         self.running = False
 
     async def check_quota_reset(self):
-        """Check if it's time to reset daily quotas."""
         now = datetime.now(timezone.utc)
         if now.hour == 0 and now.minute < 2:
             print(f"[{now}] Resetting daily quotas...")
@@ -35,7 +33,6 @@ class Worker:
                 print(f"[{now}] Error resetting quotas: {e}")
 
     async def get_due_uploads(self, db, limit):
-        """Return pending uploads."""
         query = """
             SELECT * FROM uploads
             WHERE status = 'pending'
@@ -43,20 +40,21 @@ class Worker:
             LIMIT $1
         """
         uploads = await db.fetch(query, limit)
-        print(f"[{datetime.now(timezone.utc)}] Found {len(uploads)} pending uploads")
+        print(f"[{datetime.now(timezone.utc)}] Found {len(uploads)} pending uploads:")
+        for u in uploads:
+            print(f"  - Upload ID {u['id']} | Account {u['account_id']} | Scheduled: {u['scheduled_for']} | Status: {u['status']}")
         return uploads
 
     async def process_batch_wrapper(self, batch_size):
-        """Process batch with skipping logic."""
         db = await get_db_pool()
         uploads = await self.get_due_uploads(db, batch_size)
         results = {'processed': 0, 'successful': 0, 'failed': 0, 'rescheduled': 0}
 
         for upload in uploads:
             now_utc = datetime.now(timezone.utc)
-
-            # Convert scheduled_for to aware datetime without dateutil
             scheduled_for = upload['scheduled_for']
+
+            # Parse datetime if string
             if isinstance(scheduled_for, str):
                 try:
                     if scheduled_for.endswith("Z"):
@@ -64,20 +62,23 @@ class Worker:
                     scheduled_for = datetime.fromisoformat(scheduled_for)
                 except Exception:
                     scheduled_for = datetime.strptime(scheduled_for, "%Y-%m-%d %H:%M:%S")
+
             if scheduled_for.tzinfo is None:
                 scheduled_for = scheduled_for.replace(tzinfo=timezone.utc)
 
-            today_start = datetime.combine(now_utc.date(), time_cls(0, 0, 0), tzinfo=timezone.utc)
+            print(f"[{now_utc}] Processing upload {upload['id']} | Scheduled: {scheduled_for} | Account: {upload['account_id']}")
 
+            today_start = datetime.combine(now_utc.date(), time_cls(0, 0, 0), tzinfo=timezone.utc)
             query_count = """
                 SELECT COUNT(*) FROM uploads
                 WHERE account_id = $1
                   AND scheduled_for >= $2
             """
             scheduled_count = await db.fetchval(query_count, upload['account_id'], today_start)
+            print(f"  - Scheduled uploads today for account {upload['account_id']}: {scheduled_count}")
 
-            if scheduled_count > 0:
-                reschedule_day = scheduled_count
+            if scheduled_for > now_utc and scheduled_count > 1:
+                reschedule_day = scheduled_count - 1
                 new_schedule = (today_start + timedelta(days=reschedule_day)).replace(hour=17, minute=0, tzinfo=timezone.utc)
                 query_update = """
                     UPDATE uploads
@@ -85,28 +86,25 @@ class Worker:
                     WHERE id = $2
                 """
                 await db.execute(query_update, new_schedule, upload['id'])
-                print(f"[{now_utc}] Upload {upload['id']} skipped, rescheduled for {new_schedule}")
+                print(f"  - Upload {upload['id']} skipped, rescheduled for {new_schedule}")
                 results['rescheduled'] += 1
                 continue
 
             if scheduled_for <= now_utc:
-                print(f"[{now_utc}] Upload {upload['id']} is due (scheduled: {scheduled_for})")
-
-            # Process the upload
-            try:
-                res = await process_batch(specific_upload=upload)
-                results['processed'] += 1
-                results['successful'] += res.get('successful', 0)
-                results['failed'] += res.get('failed', 0)
-                print(f"[{datetime.now(timezone.utc)}] Upload {upload['id']} processed successfully")
-            except Exception as e:
-                print(f"[{datetime.now(timezone.utc)}] Failed to process upload {upload['id']}: {e}")
-                results['failed'] += 1
+                try:
+                    print(f"  - Upload {upload['id']} is due, processing now...")
+                    res = await process_batch(specific_upload=upload)
+                    results['processed'] += 1
+                    results['successful'] += res.get('successful', 0)
+                    results['failed'] += res.get('failed', 0)
+                    print(f"  - Upload {upload['id']} processed successfully | Success: {res.get('successful', 0)}, Failed: {res.get('failed', 0)}")
+                except Exception as e:
+                    print(f"  - Failed to process upload {upload['id']}: {e}")
+                    results['failed'] += 1
 
         return results
 
     async def run(self):
-        """Main worker loop."""
         self.running = True
         signal.signal(signal.SIGINT, self.handle_shutdown)
         signal.signal(signal.SIGTERM, self.handle_shutdown)
@@ -136,8 +134,9 @@ class Worker:
                     try:
                         from roblox_scheduler import ensure_daily_roblox_video
                         await ensure_daily_roblox_video(now_utc)
+                        print(f"  - Roblox automation completed successfully at {now_utc}")
                     except Exception as exc:
-                        print(f"[{now_utc}] Roblox automation error: {exc}")
+                        print(f"  - Roblox automation error: {exc}")
                     finally:
                         self.last_roblox_sync = now_utc
 
