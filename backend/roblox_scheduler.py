@@ -9,11 +9,10 @@ from roblox_generator import RobloxGeneratorClient
 UPLOAD_STATUS_ACTIVE = ["scheduled", "retry", "uploading"]
 PROJECT_STATUSES_READY = ["completed"]
 PROJECT_STATUSES_IN_PROGRESS = ["generating", "processing"]
-LOOKAHEAD_HOURS = 24
 
 # ───── Helpers ─────
-def make_aware(dt: datetime) -> datetime:
-    """Convierte cualquier datetime naive a aware UTC"""
+def make_aware(dt: datetime) -> Optional[datetime]:
+    """Converts naive datetime to UTC-aware datetime"""
     if dt is None:
         return None
     if dt.tzinfo is None:
@@ -30,9 +29,7 @@ def _extract_storage_path(public_url: str) -> Optional[str]:
             relative = parsed.path.split(marker, 1)[1]
         else:
             relative = parsed.path.lstrip("/")
-        if relative.startswith("/"):
-            relative = relative[1:]
-        return relative
+        return relative.lstrip("/")
     except Exception:
         return None
 
@@ -40,7 +37,7 @@ def _supabase_source_id(storage_path: str) -> str:
     return f"supabase:{storage_path}"
 
 def _next_schedule_datetime(account: Dict[str, Any], now: datetime, has_upload_today: bool = False) -> datetime:
-    """Calcula el siguiente datetime de upload"""
+    """Calcula el següent datetime de upload, sempre aware UTC"""
     target_time = account.get("upload_time_1")
     if isinstance(target_time, datetime):
         target_time = target_time.time()
@@ -109,9 +106,8 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
 
         if not generator_account_id:
             try:
-                generator_uuid = UUID(generator_account["id"])
-                await models.set_account_generator_id(account_id, generator_uuid)
-                generator_account_id = generator_uuid
+                generator_account_id = UUID(generator_account["id"])
+                await models.set_account_generator_id(account_id, generator_account_id)
             except Exception as exc:
                 print(f"[RobloxAutomation] Could not store generator account id for {account_id}: {exc}")
                 continue
@@ -228,9 +224,10 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
         except Exception:
             in_progress = []
 
+        # Mantener buffer de 2 projects en progreso
         if len(in_progress) < 2:
             projects_to_create = 2 - len(in_progress)
-            for i in range(projects_to_create):
+            for _ in range(projects_to_create):
                 try:
                     await generator_client.create_project(generator_account_id)
                 except Exception:
