@@ -14,17 +14,26 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   // Fetch dashboard metrics
-  const { data: metrics, isLoading: metricsLoading } = useQuery<DashboardMetrics>({
+  const { data: metrics, isLoading: metricsLoading, error: metricsError } = useQuery<DashboardMetrics>({
     queryKey: ['dashboard-metrics'],
     queryFn: () => api.getDashboardMetrics(),
     refetchInterval: 30000, // Refresh every 30 seconds
+    retry: 2,
+    onError: (error) => {
+      console.error('Error loading dashboard metrics:', error);
+      toast.error('Error loading dashboard data. Check API connection.');
+    },
   });
 
   // Fetch recent uploads
-  const { data: uploadsData, isLoading: uploadsLoading } = useQuery<{ uploads: Upload[]; count: number }>({
+  const { data: uploadsData, isLoading: uploadsLoading, error: uploadsError } = useQuery<{ uploads: Upload[]; count: number }>({
     queryKey: ['recent-uploads'],
     queryFn: () => api.listUploads(undefined, undefined, 10),
     refetchInterval: 30000,
+    retry: 2,
+    onError: (error) => {
+      console.error('Error loading uploads:', error);
+    },
   });
 
   const stats = [
@@ -96,6 +105,27 @@ const Dashboard = () => {
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
         </div>
+      </Layout>
+    );
+  }
+
+  if (metricsError) {
+    return (
+      <Layout>
+        <Card className="glass-panel border-2 border-red-500/40 p-8 max-w-2xl mx-auto mt-8">
+          <h2 className="text-2xl font-bold text-red-500 mb-4">Connection Error</h2>
+          <p className="text-muted-foreground mb-4">
+            Could not connect to the backend API. Please check:
+          </p>
+          <ul className="list-disc list-inside space-y-2 text-muted-foreground mb-4">
+            <li>Backend is running</li>
+            <li>VITE_API_BASE environment variable is set correctly</li>
+            <li>CORS is configured in the backend</li>
+          </ul>
+          <p className="text-sm text-muted-foreground">
+            Current API URL: {import.meta.env.VITE_API_BASE || 'http://localhost:8000'}
+          </p>
+        </Card>
       </Layout>
     );
   }

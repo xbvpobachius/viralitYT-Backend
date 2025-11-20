@@ -12,17 +12,10 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Simplificado: Redirigir directamente al dashboard
-  // El backend no requiere autenticación de usuario, solo OAuth de YouTube
-  useEffect(() => {
-    // Redirigir al dashboard después de 1 segundo
-    const timer = setTimeout(() => {
-      navigate('/dashboard');
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [navigate]);
-
   const handleContinue = () => {
+    setLoading(true);
+    // Redirigir inmediatamente al dashboard
+    // El backend no requiere autenticación de usuario, solo OAuth de YouTube
     navigate('/dashboard');
   };
 

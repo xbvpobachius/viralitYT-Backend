@@ -13,10 +13,15 @@ const Channels = () => {
   const queryClient = useQueryClient();
 
   // Fetch accounts
-  const { data: accountsData, isLoading } = useQuery<{ accounts: Account[] }>({
+  const { data: accountsData, isLoading, error } = useQuery<{ accounts: Account[] }>({
     queryKey: ['accounts'],
     queryFn: () => api.listAccounts(),
     refetchInterval: 30000,
+    retry: 2,
+    onError: (error) => {
+      console.error('Error loading accounts:', error);
+      toast.error('Error loading accounts. Check API connection.');
+    },
   });
 
   // Filter only Roblox accounts
@@ -58,6 +63,19 @@ const Channels = () => {
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
         </div>
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout>
+        <Card className="glass-panel border-2 border-red-500/40 p-8 max-w-2xl mx-auto mt-8">
+          <h2 className="text-2xl font-bold text-red-500 mb-4">Connection Error</h2>
+          <p className="text-muted-foreground mb-4">
+            Could not load accounts. Please check your API connection.
+          </p>
+        </Card>
       </Layout>
     );
   }

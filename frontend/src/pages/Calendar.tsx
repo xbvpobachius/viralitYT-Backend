@@ -15,16 +15,21 @@ const Calendar = () => {
   const [searchQuery, setSearchQuery] = useState("");
 
   // Fetch uploads
-  const { data: uploadsData, isLoading } = useQuery<{ uploads: Upload[]; count: number }>({
+  const { data: uploadsData, isLoading, error: uploadsError } = useQuery<{ uploads: Upload[]; count: number }>({
     queryKey: ['calendar-uploads', selectedAccount],
     queryFn: () => api.listUploads(selectedAccount, undefined, 500),
     refetchInterval: 30000,
+    retry: 2,
+    onError: (error) => {
+      console.error('Error loading uploads:', error);
+    },
   });
 
   // Fetch accounts for filter
-  const { data: accountsData } = useQuery({
+  const { data: accountsData, error: accountsError } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => api.listAccounts(),
+    retry: 2,
   });
 
   const robloxAccounts = accountsData?.accounts.filter(a => a.theme_slug === 'roblox') || [];
@@ -147,6 +152,19 @@ const Calendar = () => {
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
         </div>
+      </Layout>
+    );
+  }
+
+  if (uploadsError || accountsError) {
+    return (
+      <Layout>
+        <Card className="glass-panel border-2 border-red-500/40 p-8 max-w-2xl mx-auto mt-8">
+          <h2 className="text-2xl font-bold text-red-500 mb-4">Connection Error</h2>
+          <p className="text-muted-foreground mb-4">
+            Could not load calendar data. Please check your API connection.
+          </p>
+        </Card>
       </Layout>
     );
   }
