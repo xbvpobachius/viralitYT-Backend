@@ -1,0 +1,69 @@
+╔══════════════════════════════════════════════════════════════╗
+║     🔧 SOLUCIÓN RÁPIDA: Error de Conexión Expo Go           ║
+╚══════════════════════════════════════════════════════════════╝
+
+❌ ERROR: "Could not connect to server exp://127.0.0.1:8081"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ SOLUCIÓN 1: Usar TUNNEL (Más Fácil)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Cierra Expo (Ctrl+C en la terminal)
+
+2. Ejecuta:
+   
+   npm run start:tunnel
+
+   O doble clic en: start-tunnel.bat
+
+3. Espera a que aparezca el código QR (puede tardar 30 seg)
+
+4. Escanea el nuevo QR con Expo Go
+
+5. ¡Debería funcionar ahora!
+
+
+✅ SOLUCIÓN 2: Misma Red WiFi
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Tu iPhone y tu PC DEBEN estar en la misma WiFi
+- Desactiva VPN si la tienes activa
+- No uses datos móviles
+
+
+✅ SOLUCIÓN 3: Cambiar a Tunnel Manualmente
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Ejecuta: npm start
+2. Cuando aparezca el menú, presiona la tecla: s
+3. Espera a que cambie a "Tunnel"
+4. Escanea el nuevo QR
+
+
+✅ SOLUCIÓN 4: Verificar IP Manualmente
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. En PowerShell ejecuta: ipconfig
+2. Busca "IPv4 Address" (ej: 192.168.1.100)
+3. En Expo Go, toca "Enter URL manually"
+4. Escribe: exp://TU_IP:8081
+   (reemplaza TU_IP con tu IP real)
+
+
+⚠️ IMPORTANTE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Tunnel es más lento pero funciona desde cualquier red
+- Si usas Tunnel, ambos dispositivos necesitan internet
+- La primera vez puede tardar más en conectar
+
+
+📱 Si NADA funciona:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Reinicia Expo Go en tu iPhone
+2. Reinicia el servidor: npm start --clear
+3. Verifica que no haya firewall bloqueando
+4. Prueba desde otra red WiFi
+

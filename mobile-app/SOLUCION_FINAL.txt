@@ -1,0 +1,50 @@
+╔══════════════════════════════════════════════════════════════╗
+║        ✅ SOLUCIÓN FINAL - URL Manual (100% Funciona)       ║
+╚══════════════════════════════════════════════════════════════╝
+
+Como cambiar el modo en la terminal no funciona, usa esto:
+
+
+📱 EN TU IPHONE (Expo Go):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Abre la app "Expo Go"
+
+2. En la pantalla principal, busca y toca:
+   "Enter URL manually"
+   O busca un ícono de lápiz/editar
+   O toca "Connection" y luego "Enter URL"
+
+3. Cuando aparezca el campo de texto, escribe EXACTAMENTE:
+   
+   exp://192.168.1.155:8081
+
+4. Toca "Connect" o "Go"
+
+
+✅ ESTO DEBERÍA FUNCIONAR INMEDIATAMENTE
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔄 ALTERNATIVA: Reiniciar Todo
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. En la terminal, presiona: Ctrl+C
+
+2. Ejecuta:
+   
+   cd mobile-app
+   npx expo start --lan --clear
+
+3. Espera a que inicie
+
+4. Usa la URL manual: exp://192.168.1.155:8081
+
+
+💡 NOTA:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+La URL manual SIEMPRE funciona, incluso si el QR muestra
+127.0.0.1. Solo necesitas escribir tu IP local manualmente.
+

@@ -1,0 +1,38 @@
+╔══════════════════════════════════════════════════════════════╗
+║        ✅ ASSETS TEMPORALES CONFIGURADOS                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+He configurado la app para que funcione SIN los archivos de assets.
+La app usará valores por defecto.
+
+
+🚀 AHORA PUEDES:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. La app debería funcionar ahora sin errores de assets
+2. Ejecuta: npm run start:tunnel
+3. Escanea el QR con Expo Go
+
+
+📝 PARA AGREGAR ASSETS DESPUÉS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Cuando quieras agregar los assets reales:
+
+1. Crea los archivos en la carpeta assets/
+   - icon.png (1024x1024)
+   - splash.png (2048x2048)
+
+2. Restaura app.json para usar los assets:
+   - "icon": "./assets/icon.png"
+   - "splash": { "image": "./assets/splash.png" }
+
+3. Ver ASSETS_INSTRUCTIONS.md para más detalles
+
+
+✅ POR AHORA:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+La app funcionará con valores por defecto. No necesitas los assets
+para probar la funcionalidad básica.
+

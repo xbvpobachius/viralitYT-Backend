@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Premium Dark Cyberpunk Theme - Viralityt */
+    --background: 240 10% 4%;
+    --foreground: 0 0% 100%;
+
+    --card: 240 6% 7%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 240 6% 7%;
+    --popover-foreground: 0 0% 100%;
+
+    /* Neon Red Primary */
+    --primary: 0 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 0 100% 50%;
+
+    /* Darker Red Secondary */
+    --secondary: 0 100% 24%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 240 6% 7%;
+    --muted-foreground: 0 0% 60%;
+
+    --accent: 0 100% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 100% 50% / 0.25;
+    --input: 240 6% 7%;
+    --ring: 0 100% 50%;
+
+    --radius: 1rem;
+
+    /* Sidebar colors */
+    --sidebar-background: 240 10% 4%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 0 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 6% 7%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 100% 50% / 0.25;
+    --sidebar-ring: 0 100% 50%;
+
+    /* Premium gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(0, 100%, 24%), hsl(0, 100%, 50%));
+    --gradient-glow: radial-gradient(circle at center, hsl(0, 100%, 50% / 0.3), transparent);
+    
+    /* Glass effect */
+    --glass-bg: hsl(240, 6%, 7% / 0.8);
+    --glass-border: hsl(0, 100%, 50% / 0.2);
+    
+    /* Shadows */
+    --shadow-red-glow: 0 0 20px hsl(0, 100%, 50% / 0.5);
+    --shadow-deep: 0 20px 60px hsl(0, 0%, 0% / 0.5);
+    
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-['Inter',sans-serif] antialiased;
+    letter-spacing: 0.01em;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+  }
+  
+  .glow-red {
+    box-shadow: var(--shadow-red-glow);
+  }
+  
+  .glow-red-hover:hover {
+    box-shadow: var(--shadow-red-glow);
+    transition: var(--transition-smooth);
+  }
+  
+  .deep-shadow {
+    box-shadow: var(--shadow-deep);
+  }
+  
+  .gradient-primary {
+    background: var(--gradient-primary);
+  }
+  
+  .text-gradient {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}

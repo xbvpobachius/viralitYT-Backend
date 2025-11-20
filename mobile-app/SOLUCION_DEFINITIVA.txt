@@ -1,0 +1,54 @@
+╔══════════════════════════════════════════════════════════════╗
+║        ✅ SOLUCIÓN DEFINITIVA - IP FIJA                      ║
+╚══════════════════════════════════════════════════════════════╝
+
+Aunque uses --lan, Expo a veces sigue mostrando 127.0.0.1.
+Esta solución fuerza la IP directamente.
+
+
+🚀 MÉTODO 1: Script con IP Fija (Recomendado)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Detén Expo (Ctrl+C)
+
+2. Ejecuta:
+   
+   cd mobile-app
+   start-con-ip-fija.bat
+
+   O doble clic en: start-con-ip-fija.bat
+
+3. Espera a que inicie
+
+4. En Expo Go, usa esta URL (aunque el QR muestre 127.0.0.1):
+   
+   exp://192.168.1.155:8081
+
+
+✅ MÉTODO 2: URL Manual (100% Funciona)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Aunque el QR muestre 127.0.0.1, la URL manual SIEMPRE funciona:
+
+1. Abre Expo Go
+2. Toca "Enter URL manually"
+3. Escribe: exp://192.168.1.155:8081
+4. Toca "Connect"
+
+Esto funciona incluso si Expo muestra 127.0.0.1 en el QR.
+
+
+💡 POR QUÉ FUNCIONA LA URL MANUAL:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+El servidor Metro está escuchando en tu IP local (192.168.1.155),
+aunque el QR muestre 127.0.0.1. La URL manual te conecta directamente
+al servidor real, ignorando lo que muestra el QR.
+
+
+🎯 RECOMENDACIÓN:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Usa la URL manual (Método 2). Es más rápido y siempre funciona,
+sin importar lo que muestre el QR.
+
