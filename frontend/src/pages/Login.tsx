@@ -20,7 +20,7 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen w-full relative overflow-hidden flex items-center justify-center">
+    <div className="min-h-screen w-full relative overflow-hidden flex items-center justify-center" style={{ backgroundColor: 'hsl(240, 10%, 4%)' }}>
       {/* Animated Background */}
       <div 
         className="absolute inset-0 z-0"
@@ -30,7 +30,7 @@ const Login = () => {
           backgroundPosition: 'center',
         }}
       >
-        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
+        <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" />
       </div>
 
       {/* Floating particles effect */}
