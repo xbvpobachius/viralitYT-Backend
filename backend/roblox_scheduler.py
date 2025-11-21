@@ -1,14 +1,21 @@
 from __future__ import annotations
 from datetime import datetime, timedelta, time as time_cls, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 from uuid import UUID
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 import models
 from roblox_generator import RobloxGeneratorClient
 
 UPLOAD_STATUS_ACTIVE = ["scheduled", "retry", "uploading"]
 PROJECT_STATUSES_READY = ["completed"]
 PROJECT_STATUSES_IN_PROGRESS = ["generating", "processing"]
+RESCHEDULE_LOOKAHEAD_DAYS = 120
+try:
+    SPAIN_TZ = ZoneInfo("Europe/Madrid")
+except Exception:
+    print("[RobloxAutomation] Warning: Could not load Europe/Madrid timezone, falling back to UTC+1 without DST")
+    SPAIN_TZ = timezone(timedelta(hours=1))
 
 # ───── Helpers ─────
 def make_aware(dt: datetime) -> Optional[datetime]:
@@ -36,23 +43,77 @@ def _extract_storage_path(public_url: str) -> Optional[str]:
 def _supabase_source_id(storage_path: str) -> str:
     return f"supabase:{storage_path}"
 
+
+async def _normalize_future_schedule(account_id: UUID, now: datetime) -> None:
+    """Reubica uploads futuros para garantizar solo 1 por día a las 18:00 hora España."""
+    local_now = now.astimezone(SPAIN_TZ)
+    start_local = datetime.combine(local_now.date(), time_cls(0, 0, 0), tzinfo=SPAIN_TZ)
+    end_local = start_local + timedelta(days=RESCHEDULE_LOOKAHEAD_DAYS)
+    start = start_local.astimezone(timezone.utc)
+    end = end_local.astimezone(timezone.utc)
+
+    upcoming = await models.get_account_uploads_between(
+        account_id,
+        start,
+        end,
+        statuses=UPLOAD_STATUS_ACTIVE,
+    )
+
+    def _scheduled_dt(upload: Dict[str, Any]) -> datetime:
+        scheduled_for = make_aware(upload.get("scheduled_for"))
+        return scheduled_for or now
+
+    upcoming_sorted = sorted(upcoming, key=_scheduled_dt)
+    reserved_dates: Set[datetime.date] = set()
+
+    for upload in upcoming_sorted:
+        scheduled_for = make_aware(upload.get("scheduled_for"))
+        if not scheduled_for:
+            continue
+
+        scheduled_local = scheduled_for.astimezone(SPAIN_TZ)
+        target_date = scheduled_local.date()
+
+        if scheduled_local < local_now:
+            target_date = local_now.date()
+
+        safety_counter = 0
+        while target_date in reserved_dates:
+            target_date += timedelta(days=1)
+            safety_counter += 1
+            if safety_counter > RESCHEDULE_LOOKAHEAD_DAYS:
+                break
+
+        reserved_dates.add(target_date)
+
+        desired_local = datetime.combine(target_date, time_cls(18, 0, 0), tzinfo=SPAIN_TZ)
+        desired_utc = desired_local.astimezone(timezone.utc)
+
+        if abs((desired_utc - scheduled_for).total_seconds()) > 60:
+            await models.update_upload(upload["id"], scheduled_for=desired_utc)
+            print(
+                f"[RobloxAutomation] Rescheduled upload {upload['id']} to "
+                f"{desired_local.isoformat()} to enforce 1-per-day"
+            )
+
 def _next_schedule_datetime(account: Dict[str, Any], now: datetime, has_upload_today: bool = False) -> datetime:
     """Calcula el següent datetime de upload, sempre aware UTC"""
     target_time = account.get("upload_time_1")
     if isinstance(target_time, datetime):
         target_time = target_time.time()
     if not target_time:
-        target_time = time_cls(18, 0, 0)  # default 18:00
+        target_time = time_cls(18, 0, 0)  # default 18:00 hora España
 
-    target_today = datetime.combine(now.date(), target_time, tzinfo=timezone.utc)
+    local_now = now.astimezone(SPAIN_TZ)
+    target_today_local = datetime.combine(local_now.date(), target_time, tzinfo=SPAIN_TZ)
 
     if has_upload_today:
-        return datetime.combine(now.date() + timedelta(days=1), target_time, tzinfo=timezone.utc)
+        return datetime.combine(local_now.date() + timedelta(days=1), target_time, tzinfo=SPAIN_TZ).astimezone(timezone.utc)
 
-    if now < target_today:
-        return target_today
+    if local_now < target_today_local:
+        return target_today_local.astimezone(timezone.utc)
 
-    return datetime.combine(now.date() + timedelta(days=1), target_time, tzinfo=timezone.utc)
+    return datetime.combine(local_now.date() + timedelta(days=1), target_time, tzinfo=SPAIN_TZ).astimezone(timezone.utc)
 
 # ───── Principal ─────
 async def ensure_daily_roblox_video(now: datetime) -> None:
@@ -118,8 +179,16 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
         if not account.get("active", True):
             continue
 
-        today_start = datetime.combine(now.date(), time_cls(0, 0, 0), tzinfo=timezone.utc)
-        today_end = datetime.combine(now.date(), time_cls(23, 59, 59), tzinfo=timezone.utc)
+        try:
+            await _normalize_future_schedule(account_id, now)
+        except Exception as exc:
+            print(f"[RobloxAutomation] Failed to normalize schedule for {account_id}: {exc}")
+
+        local_now = now.astimezone(SPAIN_TZ)
+        today_start_local = datetime.combine(local_now.date(), time_cls(0, 0, 0), tzinfo=SPAIN_TZ)
+        today_end_local = datetime.combine(local_now.date(), time_cls(23, 59, 59), tzinfo=SPAIN_TZ)
+        today_start = today_start_local.astimezone(timezone.utc)
+        today_end = today_end_local.astimezone(timezone.utc)
 
         today_uploads = await models.get_account_uploads_between(
             account_id, today_start, today_end, statuses=UPLOAD_STATUS_ACTIVE
@@ -148,6 +217,23 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
             continue
 
         schedule_datetime = _next_schedule_datetime(account, now, has_upload_today=has_upload_today)
+
+        target_local_date = schedule_datetime.astimezone(SPAIN_TZ).date()
+        target_start_local = datetime.combine(target_local_date, time_cls(0, 0, 0), tzinfo=SPAIN_TZ)
+        target_end_local = datetime.combine(target_local_date, time_cls(23, 59, 59), tzinfo=SPAIN_TZ)
+        target_start = target_start_local.astimezone(timezone.utc)
+        target_end = target_end_local.astimezone(timezone.utc)
+
+        target_day_uploads = await models.get_account_uploads_between(
+            account_id,
+            target_start,
+            target_end,
+            statuses=UPLOAD_STATUS_ACTIVE + ["done"],
+        )
+
+        if target_day_uploads:
+            print(f"[RobloxAutomation] Account {account_id} already has upload scheduled for {target_local_date}, skipping")
+            continue
 
         try:
             completed_projects = await generator_client.get_projects_by_status(
