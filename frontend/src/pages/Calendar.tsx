@@ -167,6 +167,19 @@ const Calendar = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
+        {(uploadsError || accountsError) && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <Card className="glass-panel border-2 border-yellow-500/40 p-4 bg-yellow-500/10">
+              <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                ⚠️ Warning: Could not load calendar data. Showing empty calendar.
+              </p>
+            </Card>
+          </motion.div>
+        )}
         <div className="mb-8">
           <motion.h1 
             initial={{ x: -20, opacity: 0 }}
