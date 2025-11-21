@@ -11,6 +11,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMont
 
 const Calendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState<Date | null>(new Date());
   const [selectedAccount, setSelectedAccount] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -64,6 +65,13 @@ const Calendar = () => {
     });
     return map;
   }, [filteredUploads, monthStart, monthEnd]);
+
+  const selectedDayUploads = useMemo(() => {
+    if (!selectedDay) return [];
+    return filteredUploads
+      .filter(upload => isSameDay(new Date(upload.scheduled_for), selectedDay))
+      .sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime());
+  }, [filteredUploads, selectedDay]);
 
   // Calculate stats
   const weekStats = useMemo(() => {
@@ -140,6 +148,10 @@ const Calendar = () => {
 
   const firstDayOfMonth = getDayOfWeek(monthStart);
   const daysBeforeMonth = Array.from({ length: firstDayOfMonth }, (_, i) => i);
+
+  const handleDayClick = (day: Date) => {
+    setSelectedDay(day);
+  };
 
   if (isLoading) {
     return (
@@ -287,6 +299,7 @@ const Calendar = () => {
                   const dayNumber = day.getDate();
                   const dayUploads = uploadsByDay.get(dayNumber) || [];
                   const hasVideo = dayUploads.length > 0;
+                  const isSelected = selectedDay ? isSameDay(day, selectedDay) : false;
                   
                   return (
                     <motion.div
@@ -296,12 +309,19 @@ const Calendar = () => {
                       transition={{ delay: 0.7 + dayNumber * 0.01 }}
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
+                      onClick={() => handleDayClick(day)}
                       className={`relative p-4 rounded-lg border-2 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center group overflow-hidden ${
                         hasVideo 
                           ? 'border-primary/60 bg-card/50' 
                           : 'border-primary/20 bg-card/30'
                       }`}
-                      style={{ boxShadow: hasVideo ? '0 0 10px rgba(255, 0, 0, 0.2)' : 'none' }}
+                      style={{ 
+                        boxShadow: isSelected
+                          ? '0 0 15px rgba(255, 0, 0, 0.35)'
+                          : hasVideo
+                            ? '0 0 10px rgba(255, 0, 0, 0.2)'
+                            : 'none'
+                      }}
                     >
                       <motion.div
                         className="absolute inset-0 bg-primary/10"
@@ -310,7 +330,9 @@ const Calendar = () => {
                         transition={{ duration: 0.2 }}
                       />
                       
-                      <div className="relative z-10 text-2xl font-black text-primary group-hover:scale-110 transition-transform">
+                      <div className={`relative z-10 text-2xl font-black group-hover:scale-110 transition-transform ${
+                        isSelected ? 'text-white' : 'text-primary'
+                      }`}>
                         {dayNumber}
                       </div>
                       
@@ -332,6 +354,69 @@ const Calendar = () => {
                   );
                 })}
               </div>
+            </Card>
+
+            {/* Day detail */}
+            <Card 
+              className="glass-panel border-2 border-primary/40 p-6 mt-6"
+              style={{ boxShadow: '0 0 15px rgba(255, 0, 0, 0.2)' }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Selected Day</p>
+                  <h3 className="text-2xl font-bold">
+                    {selectedDay ? format(selectedDay, "EEEE, MMMM d") : "Choose a day"}
+                  </h3>
+                </div>
+                {selectedDayUploads.length > 0 && (
+                  <span className="text-primary font-semibold">
+                    {selectedDayUploads.length} video{selectedDayUploads.length > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+
+              {selectedDayUploads.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No videos scheduled for this day
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedDayUploads.map((upload) => {
+                    const scheduledDate = new Date(upload.scheduled_for);
+                    return (
+                      <motion.div
+                        key={upload.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-4 rounded-xl border-2 border-primary/20 bg-card/50 hover:border-primary/60 transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-lg font-bold">{upload.account_name || "Unknown account"}</p>
+                            <p className="text-sm text-muted-foreground truncate">
+                              {upload.title || "Untitled video"}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xl font-black text-primary">
+                              {format(scheduledDate, "HH:mm")}
+                            </p>
+                            <p className={`text-xs font-semibold ${
+                              upload.status === "done"
+                                ? "text-green-400"
+                                : upload.status === "failed"
+                                  ? "text-red-500"
+                                  : "text-blue-400"
+                            }`}>
+                              {upload.status}
+                            </p>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
             </Card>
           </motion.div>
 
