@@ -32,12 +32,12 @@ const Calendar = () => {
     retry: 2,
   });
 
-  const robloxAccounts = accountsData?.accounts.filter(a => a.theme_slug === 'roblox') || [];
+  const robloxAccounts = accounts.filter(a => a.theme_slug === 'roblox');
 
   // Filter uploads by search query
   const filteredUploads = useMemo(() => {
-    if (!uploadsData?.uploads) return [];
-    let filtered = uploadsData.uploads;
+    if (!uploads.length) return [];
+    let filtered = uploads;
     
     if (searchQuery) {
       filtered = filtered.filter(u => 
@@ -146,25 +146,16 @@ const Calendar = () => {
   const firstDayOfMonth = getDayOfWeek(monthStart);
   const daysBeforeMonth = Array.from({ length: firstDayOfMonth }, (_, i) => i);
 
+  // Use empty arrays if error - show page anyway
+  const uploads = uploadsData?.uploads || [];
+  const accounts = accountsData?.accounts || [];
+
   if (isLoading) {
     return (
       <Layout>
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
         </div>
-      </Layout>
-    );
-  }
-
-  if (uploadsError || accountsError) {
-    return (
-      <Layout>
-        <Card className="glass-panel border-2 border-red-500/40 p-8 max-w-2xl mx-auto mt-8">
-          <h2 className="text-2xl font-bold text-red-500 mb-4">Connection Error</h2>
-          <p className="text-muted-foreground mb-4">
-            Could not load calendar data. Please check your API connection.
-          </p>
-        </Card>
       </Layout>
     );
   }

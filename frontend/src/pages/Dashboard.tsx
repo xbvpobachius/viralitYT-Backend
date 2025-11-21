@@ -39,43 +39,43 @@ const Dashboard = () => {
   const stats = [
     {
       title: "Uploads Today",
-      value: metrics?.uploads_today?.toString() || "0",
-      change: `${metrics?.uploads_done || 0} completed`,
+      value: safeMetrics.uploads_today.toString(),
+      change: `${safeMetrics.uploads_done} completed`,
       icon: Eye,
       color: "from-primary to-primary/50",
-      progress: metrics ? Math.min((metrics.uploads_done / Math.max(metrics.uploads_today, 1)) * 100, 100) : 0,
+      progress: Math.min((safeMetrics.uploads_done / Math.max(safeMetrics.uploads_today, 1)) * 100, 100),
     },
     {
       title: "Scheduled",
-      value: metrics?.uploads_scheduled?.toString() || "0",
+      value: safeMetrics.uploads_scheduled.toString(),
       change: "pending uploads",
       icon: Clock,
       color: "from-primary to-primary/60",
-      progress: metrics ? Math.min((metrics.uploads_scheduled / 50) * 100, 100) : 0,
+      progress: Math.min((safeMetrics.uploads_scheduled / 50) * 100, 100),
     },
     {
       title: "Active Accounts",
-      value: metrics?.active_accounts?.toString() || "0",
-      change: `of ${metrics?.total_accounts || 0} total`,
+      value: safeMetrics.active_accounts.toString(),
+      change: `of ${safeMetrics.total_accounts} total`,
       icon: Users,
       color: "from-primary to-primary/70",
-      progress: metrics && metrics.total_accounts > 0 
-        ? (metrics.active_accounts / metrics.total_accounts) * 100 
+      progress: safeMetrics.total_accounts > 0 
+        ? (safeMetrics.active_accounts / safeMetrics.total_accounts) * 100 
         : 0,
     },
     {
       title: "Quota Remaining",
-      value: metrics?.quota.uploads_remaining?.toString() || "0",
-      change: `${metrics?.quota.projects_available || 0} projects`,
+      value: safeMetrics.quota.uploads_remaining.toString(),
+      change: `${safeMetrics.quota.projects_available} projects`,
       icon: TrendingUp,
       color: "from-primary to-primary/40",
-      progress: metrics && metrics.quota.total_quota > 0
-        ? (metrics.quota.total_remaining / metrics.quota.total_quota) * 100
+      progress: safeMetrics.quota.total_quota > 0
+        ? (safeMetrics.quota.total_remaining / safeMetrics.quota.total_quota) * 100
         : 0,
     },
   ];
 
-  const recentActivity = uploadsData?.uploads.slice(0, 4).map((upload) => {
+  const recentActivity = (uploadsData?.uploads || []).slice(0, 4).map((upload) => {
     const scheduledDate = new Date(upload.scheduled_for);
     const now = new Date();
     const diffHours = Math.floor((scheduledDate.getTime() - now.getTime()) / (1000 * 60 * 60));
@@ -109,26 +109,23 @@ const Dashboard = () => {
     );
   }
 
-  if (metricsError) {
-    return (
-      <Layout>
-        <Card className="glass-panel border-2 border-red-500/40 p-8 max-w-2xl mx-auto mt-8">
-          <h2 className="text-2xl font-bold text-red-500 mb-4">Connection Error</h2>
-          <p className="text-muted-foreground mb-4">
-            Could not connect to the backend API. Please check:
-          </p>
-          <ul className="list-disc list-inside space-y-2 text-muted-foreground mb-4">
-            <li>Backend is running</li>
-            <li>VITE_API_BASE environment variable is set correctly</li>
-            <li>CORS is configured in the backend</li>
-          </ul>
-          <p className="text-sm text-muted-foreground">
-            Current API URL: {import.meta.env.VITE_API_BASE || 'http://localhost:8000'}
-          </p>
-        </Card>
-      </Layout>
-    );
-  }
+  // Use default values if API fails - show dashboard anyway
+  const safeMetrics = metrics || {
+    uploads_today: 0,
+    uploads_done: 0,
+    uploads_failed: 0,
+    uploads_scheduled: 0,
+    active_accounts: 0,
+    total_accounts: 0,
+    quota: {
+      total_quota: 0,
+      total_used: 0,
+      total_remaining: 0,
+      projects_available: 0,
+      uploads_remaining: 0,
+      projects: [],
+    },
+  };
 
   return (
     <Layout>
@@ -138,34 +135,64 @@ const Dashboard = () => {
         transition={{ duration: 0.5 }}
       >
         {/* Header */}
-        <div className="mb-8">
-          <motion.h1 
-            initial={{ x: -20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="text-5xl font-black mb-2"
-            style={{
-              color: '#ff3333',
-              textShadow: `
-                0 0 10px rgba(255, 51, 51, 0.8),
-                0 0 20px rgba(255, 51, 51, 0.6),
-                0 0 30px rgba(255, 0, 0, 0.4)
-              `,
-              fontFamily: '"Poppins", sans-serif',
-              display: 'inline-block'
-            }}
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <motion.h1 
+              initial={{ x: -20, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="text-5xl font-black mb-2"
+              style={{
+                color: '#ff3333',
+                textShadow: `
+                  0 0 10px rgba(255, 51, 51, 0.8),
+                  0 0 20px rgba(255, 51, 51, 0.6),
+                  0 0 30px rgba(255, 0, 0, 0.4)
+                `,
+                fontFamily: '"Poppins", sans-serif',
+                display: 'inline-block'
+              }}
+            >
+              Dashboard
+            </motion.h1>
+            <motion.p 
+              initial={{ x: -20, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="text-muted-foreground mt-3 text-lg"
+            >
+              Roblox Automation Overview
+            </motion.p>
+          </div>
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.4 }}
           >
-            Dashboard
-          </motion.h1>
-          <motion.p 
-            initial={{ x: -20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="text-muted-foreground mt-3 text-lg"
-          >
-            Roblox Automation Overview
-          </motion.p>
+            <Button
+              onClick={() => navigate('/login')}
+              variant="outline"
+              className="border-2 border-primary/40 hover:border-primary/60 hover:bg-primary/10"
+            >
+              Login
+            </Button>
+          </motion.div>
         </div>
+        
+        {metricsError && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <Card className="glass-panel border-2 border-yellow-500/40 p-4 bg-yellow-500/10">
+              <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                ⚠️ Warning: Could not connect to backend API. Showing default data. 
+                API URL: {import.meta.env.VITE_API_BASE || 'http://localhost:8000'}
+              </p>
+            </Card>
+          </motion.div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -253,7 +280,7 @@ const Dashboard = () => {
               </Button>
             </div>
             
-            {uploadsLoading ? (
+            {uploadsLoading && !uploadsData ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto"></div>
               </div>

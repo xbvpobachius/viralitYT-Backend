@@ -25,7 +25,7 @@ const Channels = () => {
   });
 
   // Filter only Roblox accounts
-  const robloxAccounts = accountsData?.accounts.filter(a => a.theme_slug === 'roblox') || [];
+  const robloxAccounts = accounts.filter(a => a.theme_slug === 'roblox');
 
   // Toggle account status
   const toggleStatusMutation = useMutation({
@@ -67,18 +67,8 @@ const Channels = () => {
     );
   }
 
-  if (error) {
-    return (
-      <Layout>
-        <Card className="glass-panel border-2 border-red-500/40 p-8 max-w-2xl mx-auto mt-8">
-          <h2 className="text-2xl font-bold text-red-500 mb-4">Connection Error</h2>
-          <p className="text-muted-foreground mb-4">
-            Could not load accounts. Please check your API connection.
-          </p>
-        </Card>
-      </Layout>
-    );
-  }
+  // Use empty array if error - show page anyway
+  const accounts = accountsData?.accounts || [];
 
   return (
     <Layout>
