@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Youtube, Plus, ArrowRight, Loader2 } from "lucide-react";
+import { Youtube, ArrowRight, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api, APIProject } from "@/lib/api";
@@ -13,7 +13,6 @@ import { useNavigate } from "react-router-dom";
 
 const Onboarding = () => {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
   const [projectId, setProjectId] = useState("");
   const [accountName, setAccountName] = useState("");
 
@@ -127,7 +126,7 @@ const Onboarding = () => {
                           <div>
                             <h3 className="font-bold">{project.project_name}</h3>
                             <p className="text-sm text-muted-foreground">
-                              Quota: {project.daily_quota.toLocaleString()}/day
+                              Quota: {project.quota_used_today.toLocaleString()}/{project.daily_quota.toLocaleString()}
                             </p>
                           </div>
                           {projectId === project.id && (
@@ -151,7 +150,7 @@ const Onboarding = () => {
                 placeholder="My Roblox Channel"
                 value={accountName}
                 onChange={(e) => setAccountName(e.target.value)}
-                className="h-12 text-lg border-2 border-primary/40 focus:border-primary"
+                className="h-12 text-lg border-2 border-primary/40 focus:border-primary rounded-xl"
                 style={{ boxShadow: '0 0 8px rgba(255, 0, 0, 0.2)' }}
               />
               <p className="text-sm text-muted-foreground mt-2">
@@ -180,14 +179,14 @@ const Onboarding = () => {
               <Button
                 variant="outline"
                 onClick={() => navigate('/channels')}
-                className="flex-1 border-2 border-primary/40"
+                className="flex-1 border-2 border-primary/40 hover:border-primary/60 h-12 rounded-xl"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleConnectChannel}
                 disabled={!projectId || !accountName.trim() || oauthMutation.isPending}
-                className="flex-1 gradient-primary glow-red-hover"
+                className="flex-1 gradient-primary glow-red-hover h-12 rounded-xl text-white font-bold"
               >
                 {oauthMutation.isPending ? (
                   <>
@@ -210,4 +209,3 @@ const Onboarding = () => {
 };
 
 export default Onboarding;
-

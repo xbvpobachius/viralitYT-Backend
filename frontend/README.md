@@ -1,106 +1,73 @@
-# ViralitYT Frontend
+# Welcome to your Lovable project
 
-Frontend para ViralitYT - Plataforma de automatización de videos de Roblox para YouTube.
+## Project info
 
-## 🚀 Tecnologías
+**URL**: https://lovable.dev/projects/0f90bb39-dd9e-40da-9129-61113f8b7df9
 
-- **Vite** - Build tool
-- **React 18** - UI Framework
-- **React Router** - Routing
-- **TypeScript** - Type safety
-- **Tailwind CSS** - Styling
-- **Shadcn UI** - Component library
-- **React Query** - Data fetching
-- **Framer Motion** - Animations
+## How can I edit this code?
 
-## 📦 Instalación
+There are several ways of editing your application.
 
-```bash
-npm install
-```
+**Use Lovable**
 
-## 🏃 Desarrollo
+Simply visit the [Lovable Project](https://lovable.dev/projects/0f90bb39-dd9e-40da-9129-61113f8b7df9) and start prompting.
 
-```bash
+Changes made via Lovable will be committed automatically to this repo.
+
+**Use your preferred IDE**
+
+If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+
+The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+
+Follow these steps:
+
+```sh
+# Step 1: Clone the repository using the project's Git URL.
+git clone <YOUR_GIT_URL>
+
+# Step 2: Navigate to the project directory.
+cd <YOUR_PROJECT_NAME>
+
+# Step 3: Install the necessary dependencies.
+npm i
+
+# Step 4: Start the development server with auto-reloading and an instant preview.
 npm run dev
 ```
 
-El servidor de desarrollo estará disponible en `http://localhost:8080`
+**Edit a file directly in GitHub**
 
-## 🏗️ Build
+- Navigate to the desired file(s).
+- Click the "Edit" button (pencil icon) at the top right of the file view.
+- Make your changes and commit the changes.
 
-```bash
-npm run build
-```
+**Use GitHub Codespaces**
 
-Los archivos estáticos se generarán en la carpeta `dist/`
+- Navigate to the main page of your repository.
+- Click on the "Code" button (green button) near the top right.
+- Select the "Codespaces" tab.
+- Click on "New codespace" to launch a new Codespace environment.
+- Edit files directly within the Codespace and commit and push your changes once you're done.
 
-## 🌐 Variables de Entorno
+## What technologies are used for this project?
 
-Crea un archivo `.env` en la raíz del proyecto:
+This project is built with:
 
-```env
-VITE_API_BASE=http://localhost:8000
-```
+- Vite
+- TypeScript
+- React
+- shadcn-ui
+- Tailwind CSS
 
-### Para Vercel
+## How can I deploy this project?
 
-En la configuración del proyecto en Vercel, agrega la variable de entorno:
+Simply open [Lovable](https://lovable.dev/projects/0f90bb39-dd9e-40da-9129-61113f8b7df9) and click on Share -> Publish.
 
-- **Nombre**: `VITE_API_BASE`
-- **Valor**: URL de tu backend (ej: `https://tu-backend.railway.app`)
+## Can I connect a custom domain to my Lovable project?
 
-## 📁 Estructura
+Yes, you can!
 
-```
-src/
-├── components/     # Componentes reutilizables
-│   ├── layout/    # Layout components (Sidebar, Layout, etc.)
-│   └── ui/         # UI components (Shadcn)
-├── pages/          # Páginas de la aplicación
-├── lib/            # Utilidades y API client
-└── hooks/          # Custom hooks
-```
+To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
-## 🔌 API
-
-El cliente API está en `src/lib/api.ts` y se conecta al backend FastAPI.
-
-### Endpoints principales:
-
-- `GET /dashboard/metrics` - Métricas del dashboard
-- `GET /accounts` - Listar cuentas
-- `PATCH /accounts/{id}/status` - Actualizar estado de cuenta
-- `GET /uploads` - Listar uploads
-- `POST /auth/youtube/start` - Iniciar OAuth de YouTube
-
-## 🎨 Diseño
-
-El diseño sigue el estilo ViralitYT con:
-- Colores primarios rojos (#ff3333)
-- Efectos de glow y animaciones
-- Glass morphism
-- Diseño responsive
-
-## 🚢 Deploy
-
-### Vercel
-
-El proyecto está configurado para Vercel con `vercel.json`. Solo necesitas:
-
-1. Conectar el repositorio de GitHub
-2. Agregar la variable de entorno `VITE_API_BASE`
-3. Deploy automático en cada push
-
-### Otros servicios
-
-Para otros servicios de hosting estático, asegúrate de:
-- Configurar el build command: `npm run build`
-- Configurar el output directory: `dist`
-- Configurar rewrites para React Router (todas las rutas → `/index.html`)
-
-## 📝 Notas
-
-- No hay autenticación de usuario - el backend solo requiere OAuth de YouTube para conectar cuentas
-- El login redirige directamente al dashboard
-- Todas las páginas están protegidas por el Layout pero sin verificación de sesión
+Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)

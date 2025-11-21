@@ -15,29 +15,24 @@ const Calendar = () => {
   const [searchQuery, setSearchQuery] = useState("");
 
   // Fetch uploads
-  const { data: uploadsData, isLoading, error: uploadsError } = useQuery<{ uploads: Upload[]; count: number }>({
+  const { data: uploadsData, isLoading } = useQuery<{ uploads: Upload[]; count: number }>({
     queryKey: ['calendar-uploads', selectedAccount],
     queryFn: () => api.listUploads(selectedAccount, undefined, 500),
     refetchInterval: 30000,
-    retry: 2,
-    onError: (error) => {
-      console.error('Error loading uploads:', error);
-    },
   });
 
   // Fetch accounts for filter
-  const { data: accountsData, error: accountsError } = useQuery({
+  const { data: accountsData } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => api.listAccounts(),
-    retry: 2,
   });
 
-  const robloxAccounts = accounts.filter(a => a.theme_slug === 'roblox');
+  const robloxAccounts = accountsData?.accounts.filter(a => a.theme_slug === 'roblox') || [];
 
   // Filter uploads by search query
   const filteredUploads = useMemo(() => {
-    if (!uploads.length) return [];
-    let filtered = uploads;
+    if (!uploadsData?.uploads) return [];
+    let filtered = uploadsData.uploads;
     
     if (searchQuery) {
       filtered = filtered.filter(u => 
@@ -146,10 +141,6 @@ const Calendar = () => {
   const firstDayOfMonth = getDayOfWeek(monthStart);
   const daysBeforeMonth = Array.from({ length: firstDayOfMonth }, (_, i) => i);
 
-  // Use empty arrays if error - show page anyway
-  const uploads = uploadsData?.uploads || [];
-  const accounts = accountsData?.accounts || [];
-
   if (isLoading) {
     return (
       <Layout>
@@ -167,19 +158,6 @@ const Calendar = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        {(uploadsError || accountsError) && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
-          >
-            <Card className="glass-panel border-2 border-yellow-500/40 p-4 bg-yellow-500/10">
-              <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                ⚠️ Warning: Could not load calendar data. Showing empty calendar.
-              </p>
-            </Card>
-          </motion.div>
-        )}
         <div className="mb-8">
           <motion.h1 
             initial={{ x: -20, opacity: 0 }}

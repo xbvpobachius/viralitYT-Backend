@@ -13,19 +13,14 @@ const Channels = () => {
   const queryClient = useQueryClient();
 
   // Fetch accounts
-  const { data: accountsData, isLoading, error } = useQuery<{ accounts: Account[] }>({
+  const { data: accountsData, isLoading } = useQuery<{ accounts: Account[] }>({
     queryKey: ['accounts'],
     queryFn: () => api.listAccounts(),
     refetchInterval: 30000,
-    retry: 2,
-    onError: (error) => {
-      console.error('Error loading accounts:', error);
-      toast.error('Error loading accounts. Check API connection.');
-    },
   });
 
   // Filter only Roblox accounts
-  const robloxAccounts = accounts.filter(a => a.theme_slug === 'roblox');
+  const robloxAccounts = accountsData?.accounts.filter(a => a.theme_slug === 'roblox') || [];
 
   // Toggle account status
   const toggleStatusMutation = useMutation({
@@ -67,9 +62,6 @@ const Channels = () => {
     );
   }
 
-  // Use empty array if error - show page anyway
-  const accounts = accountsData?.accounts || [];
-
   return (
     <Layout>
       <motion.div
@@ -77,19 +69,6 @@ const Channels = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
-          >
-            <Card className="glass-panel border-2 border-yellow-500/40 p-4 bg-yellow-500/10">
-              <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                ⚠️ Warning: Could not load accounts. Showing empty list.
-              </p>
-            </Card>
-          </motion.div>
-        )}
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between mb-8 gap-4">
           <div>
             <motion.h1 
