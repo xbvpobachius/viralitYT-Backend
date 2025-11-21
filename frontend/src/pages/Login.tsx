@@ -101,12 +101,16 @@ const Login = () => {
             className="space-y-4"
           >
             <Button 
-              onClick={handleContinue}
+              onClick={(e) => {
+                e.preventDefault();
+                handleContinue();
+              }}
               disabled={loading}
-              className="w-full h-16 text-lg gradient-primary hover:opacity-90 transition-all duration-300 glow-red-hover font-medium rounded-xl group"
+              className="w-full h-16 text-lg gradient-primary hover:opacity-90 transition-all duration-300 glow-red-hover font-medium rounded-xl group text-white"
+              type="button"
             >
               <Chrome className="w-6 h-6 mr-2 group-hover:rotate-12 transition-transform" />
-              Continue to Dashboard
+              {loading ? 'Loading...' : 'Continue to Dashboard'}
             </Button>
 
             <p className="text-center text-base text-muted-foreground mt-4">
