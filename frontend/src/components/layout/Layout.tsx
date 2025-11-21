@@ -11,7 +11,7 @@ interface LayoutProps {
 export const Layout = ({ children }: LayoutProps) => {
   return (
     <ProtectedRoute>
-      <div className="min-h-screen w-full flex relative overflow-hidden" style={{ backgroundColor: 'hsl(240, 10%, 4%)' }}>
+      <div className="min-h-screen w-full flex bg-background relative overflow-hidden">
         {/* Animated Background */}
         <div 
           className="fixed inset-0 z-0"
@@ -21,7 +21,7 @@ export const Layout = ({ children }: LayoutProps) => {
             backgroundPosition: 'center',
           }}
         >
-          <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
         </div>
 
         {/* Floating particles effect */}
@@ -54,9 +54,8 @@ export const Layout = ({ children }: LayoutProps) => {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5 }}
           className="flex-1 ml-0 md:ml-[280px] transition-all duration-300 relative z-10"
-          style={{ backgroundColor: 'transparent' }}
         >
-          <div className="p-8 relative z-10">
+          <div className="p-8">
             {children}
           </div>
         </motion.main>

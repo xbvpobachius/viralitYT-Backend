@@ -20,7 +20,7 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen w-full relative overflow-hidden flex items-center justify-center" style={{ backgroundColor: 'hsl(240, 10%, 4%)' }}>
+    <div className="min-h-screen w-full relative overflow-hidden flex items-center justify-center">
       {/* Animated Background */}
       <div 
         className="absolute inset-0 z-0"
@@ -30,7 +30,7 @@ const Login = () => {
           backgroundPosition: 'center',
         }}
       >
-        <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" />
+        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
       </div>
 
       {/* Floating particles effect */}
@@ -101,16 +101,12 @@ const Login = () => {
             className="space-y-4"
           >
             <Button 
-              onClick={(e) => {
-                e.preventDefault();
-                handleContinue();
-              }}
+              onClick={handleContinue}
               disabled={loading}
-              className="w-full h-16 text-lg gradient-primary hover:opacity-90 transition-all duration-300 glow-red-hover font-medium rounded-xl group text-white"
-              type="button"
+              className="w-full h-16 text-lg gradient-primary hover:opacity-90 transition-all duration-300 glow-red-hover font-medium rounded-xl group"
             >
               <Chrome className="w-6 h-6 mr-2 group-hover:rotate-12 transition-transform" />
-              {loading ? 'Loading...' : 'Continue to Dashboard'}
+              Continue to Dashboard
             </Button>
 
             <p className="text-center text-base text-muted-foreground mt-4">

@@ -94,10 +94,9 @@ All colors MUST be HSL.
 
 @layer utilities {
   .glass-panel {
-    background: hsl(240, 6%, 7% / 0.95);
+    background: var(--glass-bg);
     backdrop-filter: blur(20px);
     border: 1px solid var(--glass-border);
-    color: hsl(0, 0%, 100%);
   }
   
   .glow-red {
@@ -114,12 +113,7 @@ All colors MUST be HSL.
   }
   
   .gradient-primary {
-    background: linear-gradient(135deg, hsl(0, 100%, 24%), hsl(0, 100%, 50%));
-    color: white;
-  }
-  
-  .gradient-primary:hover {
-    opacity: 0.9;
+    background: var(--gradient-primary);
   }
   
   .text-gradient {
