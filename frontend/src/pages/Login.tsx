@@ -3,11 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Chrome } from "lucide-react";
 import heroBg from "@/assets/hero-bg.jpg";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-
-const ACCESS_PASSWORD = "100kcommingsoon";
+import { ACCESS_PASSWORD, hasAccess, persistAccess } from "@/lib/access";
 
 const Login = () => {
   const [loading, setLoading] = useState(false);
@@ -15,12 +14,19 @@ const Login = () => {
   const navigate = useNavigate();
   const isPasswordValid = passwordInput === ACCESS_PASSWORD;
 
+  useEffect(() => {
+    if (hasAccess()) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [navigate]);
+
   const handleContinue = () => {
     if (!isPasswordValid) {
       toast.error("Contraseña incorrecta");
       return;
     }
     setLoading(true);
+    persistAccess();
     navigate('/dashboard');
   };
 
