@@ -3,26 +3,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Chrome } from "lucide-react";
 import heroBg from "@/assets/hero-bg.jpg";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+
+const ACCESS_PASSWORD = "100kcommingsoon";
 
 const Login = () => {
   const [loading, setLoading] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
   const navigate = useNavigate();
-
-  // Simplificado: Redirigir directamente al dashboard
-  // El backend no requiere autenticación de usuario, solo OAuth de YouTube
-  useEffect(() => {
-    // Redirigir al dashboard después de 1 segundo
-    const timer = setTimeout(() => {
-      navigate('/dashboard');
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [navigate]);
+  const isPasswordValid = passwordInput === ACCESS_PASSWORD;
 
   const handleContinue = () => {
+    if (!isPasswordValid) {
+      toast.error("Contraseña incorrecta");
+      return;
+    }
+    setLoading(true);
     navigate('/dashboard');
   };
 
@@ -107,13 +105,32 @@ const Login = () => {
             transition={{ delay: 0.3 }}
             className="space-y-4"
           >
+            <div>
+              <p className="text-sm uppercase tracking-wide text-muted-foreground mb-2 text-center">
+                Acceso restringido
+              </p>
+              <Input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="Contraseña"
+                className="h-14 text-lg border-2 border-primary/40 focus:border-primary rounded-xl text-center tracking-[0.3em] uppercase"
+                autoFocus
+              />
+              {!isPasswordValid && passwordInput.length > 0 && (
+                <p className="text-xs text-center text-red-400 mt-2">
+                  La contraseña es incorrecta
+                </p>
+              )}
+            </div>
+
             <Button 
               onClick={handleContinue}
-              disabled={loading}
+              disabled={loading || !isPasswordValid}
               className="w-full h-16 text-lg gradient-primary hover:opacity-90 transition-all duration-300 glow-red-hover font-medium rounded-xl group"
             >
               <Chrome className="w-6 h-6 mr-2 group-hover:rotate-12 transition-transform" />
-              Continue to Dashboard
+              Entrar
             </Button>
 
             <p className="text-center text-base text-muted-foreground mt-4">
