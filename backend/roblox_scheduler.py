@@ -1,16 +1,17 @@
 from __future__ import annotations
 from datetime import datetime, timedelta, time as time_cls, timezone
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Optional, Set, List
 from uuid import UUID
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 import models
 from roblox_generator import RobloxGeneratorClient
 
-UPLOAD_STATUS_ACTIVE = ["scheduled", "retry", "uploading"]
+UPLOAD_STATUS_ACTIVE = ["pending", "scheduled", "retry", "uploading", "skipped"]
 PROJECT_STATUSES_READY = ["completed"]
 PROJECT_STATUSES_IN_PROGRESS = ["generating", "processing"]
 RESCHEDULE_LOOKAHEAD_DAYS = 120
+TARGET_UPLOAD_TIME = time_cls(18, 0, 0)
 try:
     SPAIN_TZ = ZoneInfo("Europe/Madrid")
 except Exception:
@@ -97,13 +98,8 @@ async def _normalize_future_schedule(account_id: UUID, now: datetime) -> None:
             )
 
 def _next_schedule_datetime(account: Dict[str, Any], now: datetime, has_upload_today: bool = False) -> datetime:
-    """Calcula el següent datetime de upload, sempre aware UTC"""
-    target_time = account.get("upload_time_1")
-    if isinstance(target_time, datetime):
-        target_time = target_time.time()
-    if not target_time:
-        target_time = time_cls(18, 0, 0)  # default 18:00 hora España
-
+    """Calcula el següent datetime de upload, sempre aware UTC (18:00 hora España)"""
+    target_time = TARGET_UPLOAD_TIME
     local_now = now.astimezone(SPAIN_TZ)
     target_today_local = datetime.combine(local_now.date(), target_time, tzinfo=SPAIN_TZ)
 
@@ -237,13 +233,29 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
 
         try:
             completed_projects = await generator_client.get_projects_by_status(
-                generator_account_id, PROJECT_STATUSES_READY, limit=20
+                generator_account_id, PROJECT_STATUSES_READY, limit=40
             )
         except Exception:
             completed_projects = []
 
+        usage_cache: Dict[str, bool] = {}
+
+        async def _clip_already_used(clip_id: Optional[str]) -> bool:
+            if not clip_id:
+                return False
+            if clip_id in usage_cache:
+                return usage_cache[clip_id]
+            used = await models.has_account_used_primary(account_id, clip_id)
+            usage_cache[clip_id] = used
+            return used
+
+        candidates: List[Dict[str, Any]] = []
         for project in reversed(completed_projects):
-            project_id = UUID(project["id"])
+            try:
+                project_id = UUID(project["id"])
+            except Exception:
+                continue
+
             existing = await models.get_roblox_project(project_id)
             if existing and existing.get("status") in ("scheduled", "uploaded"):
                 continue
@@ -254,11 +266,28 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
 
             primary_video_id = project.get("primary_video_id")
             secondary_video_id = project.get("secondary_video_id")
-            if (primary_video_id and await models.has_account_used_primary(account_id, primary_video_id)) or \
-               (secondary_video_id and await models.has_account_used_primary(account_id, secondary_video_id)):
-                continue
 
+            already_used = await _clip_already_used(primary_video_id)
+            if not already_used:
+                already_used = await _clip_already_used(secondary_video_id)
+
+            candidates.append(
+                {
+                    "project": project,
+                    "project_id": project_id,
+                    "storage_path": storage_path,
+                    "primary_video_id": primary_video_id,
+                    "secondary_video_id": secondary_video_id,
+                    "already_used": already_used,
+                }
+            )
+
+        async def _schedule_from_candidate(candidate: Dict[str, Any]) -> bool:
+            project = candidate["project"]
+            project_id = candidate["project_id"]
+            storage_path = candidate["storage_path"]
             source_id = _supabase_source_id(storage_path)
+
             video_record = await models.upsert_video(
                 source_video_id=source_id,
                 title=project.get("top_text") or "Roblox Short",
@@ -289,8 +318,8 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
                 video_id=video_record["id"],
                 storage_path=storage_path,
                 video_url=project.get("video_url"),
-                primary_video_id=primary_video_id,
-                secondary_video_id=secondary_video_id,
+                primary_video_id=candidate["primary_video_id"],
+                secondary_video_id=candidate["secondary_video_id"],
                 status="scheduled",
                 scheduled_for=schedule_datetime,
                 upload_id=upload["id"],
@@ -300,7 +329,27 @@ async def ensure_daily_roblox_video(now: datetime) -> None:
                 await generator_client.update_project_status(project_id, "assigned")
             except Exception:
                 pass
-            break  # Solo scheduleamos un proyecto por cuenta
+            return True
+
+        scheduled_upload = False
+        for allow_reuse in (False, True):
+            if scheduled_upload:
+                break
+            for candidate in candidates:
+                if not allow_reuse and candidate["already_used"]:
+                    continue
+                scheduled_upload = await _schedule_from_candidate(candidate)
+                if scheduled_upload:
+                    if allow_reuse and candidate["already_used"]:
+                        print(
+                            f"[RobloxAutomation] Account {account_id} reused short "
+                            f"{candidate['primary_video_id'] or candidate['secondary_video_id']} "
+                            "because all fresh clips were consumed"
+                        )
+                    break
+
+        if not scheduled_upload:
+            print(f"[RobloxAutomation] No generator projects ready for account {account_id}, will retry later")
 
         # Comprobar proyectos en progreso
         try:
