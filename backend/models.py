@@ -7,6 +7,26 @@ from uuid import UUID
 import asyncpg
 from deps import get_db, encrypt_field, decrypt_field
 
+_ACCOUNT_RECONNECT_COLUMNS_READY = False
+
+
+async def _ensure_account_reconnect_columns() -> None:
+    """Best-effort addition of reconnect columns for older DBs."""
+    global _ACCOUNT_RECONNECT_COLUMNS_READY
+    if _ACCOUNT_RECONNECT_COLUMNS_READY:
+        return
+    async with get_db() as conn:
+        await conn.execute(
+            """
+            ALTER TABLE IF EXISTS accounts
+            ADD COLUMN IF NOT EXISTS needs_reconnect BOOLEAN NOT NULL DEFAULT false,
+            ADD COLUMN IF NOT EXISTS oauth_error_code TEXT,
+            ADD COLUMN IF NOT EXISTS oauth_error_message TEXT,
+            ADD COLUMN IF NOT EXISTS oauth_last_error_at TIMESTAMPTZ
+            """
+        )
+    _ACCOUNT_RECONNECT_COLUMNS_READY = True
+
 
 # API Projects
 async def create_api_project(
@@ -159,6 +179,7 @@ async def get_account(account_id: UUID) -> Optional[Dict[str, Any]]:
 
 async def list_accounts() -> List[Dict[str, Any]]:
     """List all accounts (without tokens)."""
+    await _ensure_account_reconnect_columns()
     async with get_db() as conn:
         rows = await conn.fetch(
             """
@@ -226,6 +247,7 @@ async def update_account_status(account_id: UUID, active: bool) -> None:
 
 async def flag_account_for_reconnect(account_id: UUID, error_code: str, error_message: str) -> None:
     """Mark account as needing reconnection due to OAuth issues."""
+    await _ensure_account_reconnect_columns()
     async with get_db() as conn:
         await conn.execute(
             """
@@ -248,6 +270,7 @@ async def update_account_refresh_token(
     channel_id: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """Store a new refresh token and clear reconnect flags."""
+    await _ensure_account_reconnect_columns()
     async with get_db() as conn:
         row = await conn.fetchrow(
             """
