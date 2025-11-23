@@ -7,6 +7,7 @@ import httpx
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+from google.auth.exceptions import RefreshError
 from deps import settings
 import models
 from roblox_generator import RobloxGeneratorClient
@@ -16,6 +17,14 @@ SCOPES = [
     'https://www.googleapis.com/auth/youtube.upload',
     'https://www.googleapis.com/auth/youtube.readonly',
 ]
+
+
+class TokenRefreshError(Exception):
+    """Raised when refreshing OAuth credentials fails."""
+
+    def __init__(self, code: str, message: str):
+        self.code = code
+        super().__init__(message)
 
 
 def create_oauth_flow(client_id: str, client_secret: str, state: str) -> Flow:
@@ -89,7 +98,8 @@ def _decode_oauth_state(state: str) -> Dict[str, Any]:
 async def start_oauth_flow(
     project_id: UUID,
     account_name: str,
-    theme_slug: str
+    theme_slug: str,
+    existing_account_id: Optional[UUID] = None
 ) -> Dict[str, Any]:
     """
     Start OAuth flow.
@@ -105,8 +115,11 @@ async def start_oauth_flow(
     state_data = {
         "project_id": str(project_id),
         "account_name": account_name,
-        "theme_slug": theme_slug
+        "theme_slug": theme_slug,
+        "mode": "reconnect" if existing_account_id else "new",
     }
+    if existing_account_id:
+        state_data["account_id"] = str(existing_account_id)
     state = base64.urlsafe_b64encode(json.dumps(state_data).encode()).decode()
     
     flow = create_oauth_flow(project['client_id'], project['client_secret'], state)
@@ -141,6 +154,8 @@ async def handle_oauth_callback(code: str, state: str) -> Dict[str, Any]:
     project_id = UUID(state_data['project_id'])
     account_name = state_data['account_name']
     theme_slug = state_data['theme_slug']
+    account_id_str = state_data.get("account_id")
+    existing_account_id = UUID(account_id_str) if account_id_str else None
     
     # Get project credentials
     project = await models.get_api_project(project_id)
@@ -171,17 +186,30 @@ async def handle_oauth_callback(code: str, state: str) -> Dict[str, Any]:
     channel_id = channel['id']
     channel_title = channel['snippet']['title']
     
-    # Create account in database
-    account = await models.create_account(
-        display_name=account_name or channel_title,
-        theme_slug=theme_slug,
-        refresh_token=refresh_token,
-        api_project_id=project_id,
-        channel_id=channel_id
-    )
+    if existing_account_id:
+        existing_account = await models.get_account(existing_account_id)
+        if not existing_account:
+            raise ValueError("Account selected for reconnection was not found")
+        if existing_account.get("channel_id") and existing_account["channel_id"] != channel_id:
+            raise ValueError("El canal autorizado no coincide con la cuenta original")
+
+        account = await models.update_account_refresh_token(
+            existing_account_id,
+            refresh_token,
+            channel_id=channel_id
+        )
+    else:
+        # Create account in database
+        account = await models.create_account(
+            display_name=account_name or channel_title,
+            theme_slug=theme_slug,
+            refresh_token=refresh_token,
+            api_project_id=project_id,
+            channel_id=channel_id
+        )
 
     # If this is a Roblox account, bootstrap the external generator immediately
-    if theme_slug == "roblox":
+    if not existing_account_id and theme_slug == "roblox":
         try:
             from roblox_generator import RobloxGeneratorClient
             generator_client = RobloxGeneratorClient()
@@ -217,7 +245,8 @@ async def handle_oauth_callback(code: str, state: str) -> Dict[str, Any]:
     return {
         "account": account,
         "channel_id": channel_id,
-        "channel_title": channel_title
+        "channel_title": channel_title,
+        "reconnected": existing_account_id is not None,
     }
 
 
@@ -240,7 +269,13 @@ async def get_fresh_credentials(
     
     # Refresh the token
     from google.auth.transport.requests import Request
-    credentials.refresh(Request())
+    try:
+        credentials.refresh(Request())
+    except RefreshError as exc:
+        message = str(exc)
+        lowered = message.lower()
+        code = "invalid_grant" if "invalid_grant" in lowered else "refresh_error"
+        raise TokenRefreshError(code, message or "Token refresh failed") from exc
     
     return credentials
 

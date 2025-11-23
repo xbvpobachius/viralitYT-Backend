@@ -23,6 +23,10 @@ export interface Account {
   api_project_id: string;
   upload_time_1: string;
   upload_time_2: string;
+  needs_reconnect?: boolean;
+  oauth_error_code?: string | null;
+  oauth_error_message?: string | null;
+  oauth_last_error_at?: string | null;
   created_at: string;
 }
 
@@ -147,6 +151,12 @@ class APIClient {
     return this.request<{ authorization_url: string; state: string }>('/auth/youtube/start', {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  }
+
+  async reauthorizeAccount(accountId: string): Promise<{ authorization_url: string; state: string }> {
+    return this.request<{ authorization_url: string; state: string }>(`/accounts/${accountId}/reauthorize`, {
+      method: 'POST',
     });
   }
 

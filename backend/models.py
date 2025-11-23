@@ -163,7 +163,9 @@ async def list_accounts() -> List[Dict[str, Any]]:
         rows = await conn.fetch(
             """
             SELECT id, display_name, channel_id, theme_slug, active,
-                   api_project_id, upload_time_1, upload_time_2, generator_account_id, created_at
+                   api_project_id, upload_time_1, upload_time_2, generator_account_id,
+                   needs_reconnect, oauth_error_code, oauth_error_message, oauth_last_error_at,
+                   created_at
             FROM accounts
             ORDER BY created_at DESC
             """
@@ -220,6 +222,50 @@ async def update_account_status(account_id: UUID, active: bool) -> None:
             "UPDATE accounts SET active = $1 WHERE id = $2",
             active, account_id
         )
+
+
+async def flag_account_for_reconnect(account_id: UUID, error_code: str, error_message: str) -> None:
+    """Mark account as needing reconnection due to OAuth issues."""
+    async with get_db() as conn:
+        await conn.execute(
+            """
+            UPDATE accounts
+            SET needs_reconnect = true,
+                active = false,
+                oauth_error_code = $2,
+                oauth_error_message = $3,
+                oauth_last_error_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            account_id, error_code, error_message
+        )
+
+
+async def update_account_refresh_token(
+    account_id: UUID,
+    refresh_token: str,
+    channel_id: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Store a new refresh token and clear reconnect flags."""
+    async with get_db() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE accounts
+            SET oauth_refresh_token = $2,
+                channel_id = COALESCE($3, channel_id),
+                needs_reconnect = false,
+                active = true,
+                oauth_error_code = NULL,
+                oauth_error_message = NULL,
+                oauth_last_error_at = NULL,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING *
+            """,
+            account_id, refresh_token, channel_id
+        )
+        return dict(row) if row else None
 
 
 # Videos

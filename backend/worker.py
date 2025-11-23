@@ -2,20 +2,11 @@ from __future__ import annotations
 import asyncio
 import signal
 from datetime import datetime, timedelta, time as time_cls, timezone
-from zoneinfo import ZoneInfo
 from deps import settings, get_db_pool, close_db_pool
 from scheduler import process_batch
 from quotas import reset_all_quotas
 
-try:
-    SPAIN_TZ = ZoneInfo("Europe/Madrid")
-except Exception:
-    print("[Worker] Warning: Europe/Madrid timezone unavailable, defaulting to UTC+1 without DST")
-    SPAIN_TZ = timezone(timedelta(hours=1))
-
-TARGET_UPLOAD_TIME = time_cls(18, 0, 0)
-ENFORCED_STATUSES = ["pending", "scheduled", "retry", "uploading", "skipped", "done"]
-MAX_RESCHEDULE_LOOKAHEAD_DAYS = 180
+SPAIN_OFFSET = timedelta(hours=1)  # UTC+1 por defecto
 
 class Worker:
     """Background worker for upload processing with scheduled consideration."""
@@ -40,73 +31,6 @@ class Worker:
                 print(f"[{now}] Quotas reset successfully")
             except Exception as e:
                 print(f"[{now}] Error resetting quotas: {e}")
-
-    def _local_day_bounds(self, local_date):
-        start_local = datetime.combine(local_date, time_cls(0, 0, 0), tzinfo=SPAIN_TZ)
-        end_local = datetime.combine(local_date, time_cls(23, 59, 59), tzinfo=SPAIN_TZ)
-        return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
-
-    def _target_local_datetime(self, local_date):
-        return datetime.combine(local_date, TARGET_UPLOAD_TIME, tzinfo=SPAIN_TZ)
-
-    async def _has_upload_on_date(self, db, account_id, local_date, exclude_upload_id):
-        day_start, day_end = self._local_day_bounds(local_date)
-        query = """
-            SELECT 1
-            FROM uploads
-            WHERE account_id = $1
-              AND scheduled_for BETWEEN $2 AND $3
-              AND status = ANY($4::text[])
-              AND id <> $5
-            LIMIT 1
-        """
-        row = await db.fetchrow(
-            query,
-            account_id,
-            day_start,
-            day_end,
-            ENFORCED_STATUSES,
-            exclude_upload_id,
-        )
-        return row is not None
-
-    async def _find_first_available_date(self, db, account_id, start_date, exclude_upload_id):
-        candidate = start_date
-        for _ in range(MAX_RESCHEDULE_LOOKAHEAD_DAYS):
-            conflict = await self._has_upload_on_date(db, account_id, candidate, exclude_upload_id)
-            if not conflict:
-                return candidate
-            candidate += timedelta(days=1)
-        return candidate
-
-    async def _reschedule_upload(self, db, upload, target_local_date, reason):
-        upload_id = upload['id']
-        account_id = upload['account_id']
-        target_local_dt = self._target_local_datetime(target_local_date)
-        target_utc = target_local_dt.astimezone(timezone.utc)
-        await db.execute(
-            """
-            UPDATE uploads
-            SET scheduled_for = $1,
-                status = CASE WHEN status = 'pending' THEN 'scheduled' ELSE status END
-            WHERE id = $2
-            """,
-            target_utc,
-            upload_id,
-        )
-        await db.execute(
-            """
-            UPDATE roblox_projects
-            SET scheduled_for = $1
-            WHERE upload_id = $2
-            """,
-            target_utc,
-            upload_id,
-        )
-        print(
-            f"  - Upload {upload_id} for account {account_id} {reason}. "
-            f"Rescheduled to {target_local_dt.isoformat()}"
-        )
 
     async def get_due_uploads(self, db, limit):
         """Consider 'scheduled' uploads as pending if the scheduled time has arrived."""
@@ -144,47 +68,26 @@ class Worker:
 
             print(f"[{now_utc}] Processing upload {upload['id']} | Scheduled: {scheduled_for} | Account: {upload['account_id']}")
 
-            scheduled_local = scheduled_for.astimezone(SPAIN_TZ)
-            target_local_date = scheduled_local.date()
+            today_start = datetime.combine(now_utc.date(), time_cls(0, 0, 0), tzinfo=timezone.utc)
+            query_count = """
+                SELECT COUNT(*) FROM uploads
+                WHERE account_id = $1
+                  AND scheduled_for >= $2
+            """
+            scheduled_count = await db.fetchval(query_count, upload['account_id'], today_start)
+            print(f"  - Scheduled uploads today for account {upload['account_id']}: {scheduled_count}")
 
-            if scheduled_local.time() != TARGET_UPLOAD_TIME:
-                desired_date = target_local_date
-                if scheduled_local.time() > TARGET_UPLOAD_TIME:
-                    desired_date = target_local_date + timedelta(days=1)
-                desired_date = await self._find_first_available_date(
-                    db,
-                    upload['account_id'],
-                    desired_date,
-                    upload['id'],
-                )
-                await self._reschedule_upload(
-                    db,
-                    upload,
-                    desired_date,
-                    "was not aligned to 18:00 Europe/Madrid",
-                )
-                results['rescheduled'] += 1
-                continue
-
-            conflict = await self._has_upload_on_date(
-                db,
-                upload['account_id'],
-                target_local_date,
-                upload['id'],
-            )
-            if conflict:
-                desired_date = await self._find_first_available_date(
-                    db,
-                    upload['account_id'],
-                    target_local_date + timedelta(days=1),
-                    upload['id'],
-                )
-                await self._reschedule_upload(
-                    db,
-                    upload,
-                    desired_date,
-                    "would exceed the 1 upload per day limit",
-                )
+            # Skip if too many scheduled today
+            if scheduled_for > now_utc and scheduled_count > 1:
+                reschedule_day = scheduled_count - 1
+                new_schedule = (today_start + timedelta(days=reschedule_day)).replace(hour=17, minute=0, tzinfo=timezone.utc)
+                query_update = """
+                    UPDATE uploads
+                    SET status = 'skipped', scheduled_for = $1
+                    WHERE id = $2
+                """
+                await db.execute(query_update, new_schedule, upload['id'])
+                print(f"  - Upload {upload['id']} skipped, rescheduled for {new_schedule}")
                 results['rescheduled'] += 1
                 continue
 

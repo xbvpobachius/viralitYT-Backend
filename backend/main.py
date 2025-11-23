@@ -199,6 +199,27 @@ async def update_account_status(account_id: str, request: UpdateAccountStatusReq
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/accounts/{account_id}/reauthorize")
+async def reauthorize_account(account_id: str):
+    """Start OAuth flow again for an existing account."""
+    try:
+        account = await models.get_account(UUID(account_id))
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+
+        result = await youtube_oauth.start_oauth_flow(
+            account['api_project_id'],
+            account['display_name'],
+            account['theme_slug'],
+            existing_account_id=UUID(account_id)
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Themes endpoints
 @app.get("/themes")
 async def list_themes():

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 from uuid import UUID
 import models
-from youtube_oauth import get_authorized_youtube_client
+from youtube_oauth import get_authorized_youtube_client, TokenRefreshError
 from pipeline import execute_pipeline, PipelineError
 from quotas import pick_project_for_upload, track_quota_usage
 import traceback
@@ -94,6 +94,24 @@ async def process_upload(upload: Dict[str, Any]) -> Dict[str, Any]:
             'url': result['url']
         }
     
+    except TokenRefreshError as e:
+        friendly_error = "Token expirado o revocado. Reconecta la cuenta para reanudar los uploads."
+        await models.flag_account_for_reconnect(account_id, e.code, str(e))
+        await models.update_roblox_project_status_by_upload(upload_id, 'paused')
+        await models.update_upload_status(
+            upload_id,
+            status='paused',
+            run_id=run_id,
+            error=friendly_error
+        )
+        return {
+            'success': False,
+            'upload_id': upload_id,
+            'error': friendly_error,
+            'should_retry': False,
+            'retry_count': upload.get('retry_count', 0)
+        }
+
     except PipelineError as e:
         error = f"Pipeline error: {str(e)}"
         print(f"[{run_id}] {error}")

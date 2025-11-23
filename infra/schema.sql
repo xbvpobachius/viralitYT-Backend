@@ -37,6 +37,10 @@ CREATE TABLE accounts (
   upload_time_1 TIME NOT NULL DEFAULT '10:00:00',
   upload_time_2 TIME NOT NULL DEFAULT '18:00:00',
   generator_account_id UUID,
+  needs_reconnect BOOLEAN NOT NULL DEFAULT false,
+  oauth_error_code TEXT,
+  oauth_error_message TEXT,
+  oauth_last_error_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

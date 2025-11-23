@@ -4,15 +4,18 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Youtube, ArrowRight, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { Youtube, ArrowRight, Loader2, RotateCcw } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { api, APIProject } from "@/lib/api";
+import { api, APIProject, Account } from "@/lib/api";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const Onboarding = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const reconnectAccountId = searchParams.get("reconnect");
+  const isReconnect = Boolean(reconnectAccountId);
   const [projectId, setProjectId] = useState("");
   const [accountName, setAccountName] = useState("");
 
@@ -35,7 +38,39 @@ const Onboarding = () => {
     },
   });
 
+  const reauthMutation = useMutation({
+    mutationFn: (accountId: string) => api.reauthorizeAccount(accountId),
+    onSuccess: (data) => {
+      window.location.href = data.authorization_url;
+    },
+    onError: (error: Error) => {
+      toast.error(`Error: ${error.message}`);
+    },
+  });
+
+  const { data: reconnectAccount, isLoading: reconnectLoading } = useQuery<Account>({
+    queryKey: ['account', reconnectAccountId],
+    queryFn: () => api.getAccount(reconnectAccountId!),
+    enabled: isReconnect,
+  });
+
+  useEffect(() => {
+    if (reconnectAccount) {
+      setProjectId(reconnectAccount.api_project_id);
+      setAccountName(reconnectAccount.display_name);
+    }
+  }, [reconnectAccount]);
+
   const handleConnectChannel = () => {
+    if (isReconnect) {
+      if (!reconnectAccountId) {
+        toast.error("Cuenta no encontrada para reconectar");
+        return;
+      }
+      reauthMutation.mutate(reconnectAccountId);
+      return;
+    }
+
     if (!projectId) {
       toast.error("Please select an API project");
       return;
@@ -51,6 +86,9 @@ const Onboarding = () => {
       theme_slug: 'roblox', // Fixed theme
     });
   };
+
+  const isActionLoading = isReconnect ? reauthMutation.isPending : oauthMutation.isPending;
+  const isReady = !isReconnect || (!!reconnectAccount && !reconnectLoading);
 
   return (
     <Layout>
@@ -77,7 +115,7 @@ const Onboarding = () => {
               display: 'inline-block'
             }}
           >
-            Connect Channel
+            {isReconnect ? "Reconnect Channel" : "Connect Channel"}
           </motion.h1>
           <motion.p 
             initial={{ x: -20, opacity: 0 }}
@@ -85,7 +123,9 @@ const Onboarding = () => {
             transition={{ delay: 0.3 }}
             className="text-muted-foreground mt-3 text-lg"
           >
-            Connect your YouTube channel to start automating Roblox videos
+            {isReconnect
+              ? "Tu token expiró. Reautoriza la misma cuenta para seguir publicando a las 18:00."
+              : "Connect your YouTube channel to start automating Roblox videos"}
           </motion.p>
         </div>
 
@@ -96,7 +136,15 @@ const Onboarding = () => {
           {/* Step 1: Select API Project */}
           <div className="space-y-6">
             <div>
-              <Label className="text-lg font-bold mb-4 block">1. Select API Project</Label>
+              <div className="flex items-center justify-between mb-4">
+                <Label className="text-lg font-bold">1. Select API Project</Label>
+                {isReconnect && reconnectAccount && (
+                  <div className="flex items-center gap-2 text-sm text-primary">
+                    <RotateCcw className="w-4 h-4" />
+                    Reconectando {reconnectAccount.display_name}
+                  </div>
+                )}
+              </div>
               {projectsLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-6 h-6 animate-spin text-primary" />
@@ -114,8 +162,21 @@ const Onboarding = () => {
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
+                      {isReconnect && project.id !== projectId ? (
+                        <div className="w-full p-4 rounded-lg border-2 border-primary/10 text-muted-foreground text-sm bg-card/40 opacity-60 cursor-not-allowed">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h3 className="font-bold">{project.project_name}</h3>
+                              <p className="text-xs opacity-70">
+                                Solo disponible para nuevas conexiones
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
                       <button
                         onClick={() => setProjectId(project.id)}
+                        disabled={isReconnect}
                         className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
                           projectId === project.id
                             ? 'border-primary bg-primary/10'
@@ -134,6 +195,7 @@ const Onboarding = () => {
                           )}
                         </div>
                       </button>
+                      )}
                     </motion.div>
                   ))}
                 </div>
@@ -149,12 +211,15 @@ const Onboarding = () => {
                 id="accountName"
                 placeholder="My Roblox Channel"
                 value={accountName}
+                readOnly={isReconnect}
                 onChange={(e) => setAccountName(e.target.value)}
                 className="h-12 text-lg border-2 border-primary/40 focus:border-primary rounded-xl"
                 style={{ boxShadow: '0 0 8px rgba(255, 0, 0, 0.2)' }}
               />
               <p className="text-sm text-muted-foreground mt-2">
-                This name will be used to identify your channel in the dashboard
+                {isReconnect
+                  ? "Nombre original de la cuenta. No se puede modificar mientras la reconectas."
+                  : "This name will be used to identify your channel in the dashboard"}
               </p>
             </div>
 
@@ -166,7 +231,7 @@ const Onboarding = () => {
                   <p className="font-medium mb-1">What happens next?</p>
                   <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
                     <li>You'll be redirected to Google to authorize YouTube access</li>
-                    <li>Your channel will be connected automatically</li>
+                    <li>{isReconnect ? "El token se actualizará para la misma cuenta" : "Your channel will be connected automatically"}</li>
                     <li>Videos will be scheduled at 6 PM daily (Spain time)</li>
                     <li>Only Roblox theme videos will be published</li>
                   </ul>
@@ -185,17 +250,17 @@ const Onboarding = () => {
               </Button>
               <Button
                 onClick={handleConnectChannel}
-                disabled={!projectId || !accountName.trim() || oauthMutation.isPending}
+                disabled={!isReady || !projectId || !accountName.trim() || isActionLoading}
                 className="flex-1 gradient-primary glow-red-hover h-12 rounded-xl text-white font-bold"
               >
-                {oauthMutation.isPending ? (
+                {isActionLoading ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Connecting...
+                    {isReconnect ? "Reconnecting..." : "Connecting..."}
                   </>
                 ) : (
                   <>
-                    Connect Channel
+                    {isReconnect ? "Reconnect Channel" : "Connect Channel"}
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </>
                 )}

@@ -2,11 +2,12 @@ import { Layout } from "@/components/layout/Layout";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Youtube, Plus, Crown, Pause, Play } from "lucide-react";
+import { Youtube, Plus, Crown, Pause, Play, AlertTriangle } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Account } from "@/lib/api";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 
 const Channels = () => {
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ const Channels = () => {
 
   // Filter only Roblox accounts
   const robloxAccounts = accountsData?.accounts.filter(a => a.theme_slug === 'roblox') || [];
+  const reconnectAccounts = robloxAccounts.filter((account) => account.needs_reconnect);
 
   // Toggle account status
   const toggleStatusMutation = useMutation({
@@ -51,6 +53,12 @@ const Channels = () => {
       return timeStr;
     }
   };
+
+  useEffect(() => {
+    if (reconnectAccounts.length > 0) {
+      toast.warning(`Token expirado en ${reconnectAccounts[0].display_name}. Reconecta la cuenta para reanudar los uploads.`);
+    }
+  }, [reconnectAccounts.length]);
 
   if (isLoading) {
     return (
@@ -114,6 +122,44 @@ const Channels = () => {
             </Button>
           </motion.div>
         </div>
+
+        {reconnectAccounts.length > 0 && (
+          <Card className="glass-panel border-2 border-red-500/50 p-6 mb-8 bg-red-500/5">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-6 h-6 text-red-500 mt-1" />
+                <div>
+                  <h3 className="text-xl font-bold text-red-500">Token expirado detectado</h3>
+                  <p className="text-sm text-red-100/80">
+                    Reconecta estas cuentas para continuar publicando automáticamente.
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                {reconnectAccounts.map((account) => (
+                  <div
+                    key={account.id}
+                    className="flex items-center justify-between p-4 rounded-xl border border-red-500/40 bg-background/80"
+                  >
+                    <div>
+                      <p className="font-semibold">{account.display_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Último error: {account.oauth_error_message || 'Token expirado'}
+                      </p>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      onClick={() => navigate(`/onboarding?reconnect=${account.id}`)}
+                      className="rounded-xl"
+                    >
+                      Reconectar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Channels Grid */}
         {robloxAccounts.length === 0 ? (
@@ -182,32 +228,49 @@ const Channels = () => {
                       <span className="text-sm text-muted-foreground">Status</span>
                       <span
                         className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          channel.active
+                          channel.needs_reconnect
+                            ? "bg-red-500/20 text-red-400"
+                            : channel.active
                             ? "bg-primary/20 text-primary"
                             : "bg-muted text-muted-foreground"
                         }`}
                       >
-                        {channel.active ? "Active" : "Paused"}
+                        {channel.needs_reconnect ? "Token expirado" : channel.active ? "Active" : "Paused"}
                       </span>
                     </div>
-                    <Button
-                      variant="outline"
-                      className="w-full border-2 border-primary/40 hover:border-primary/60"
-                      onClick={() => handleToggleStatus(channel)}
-                      disabled={toggleStatusMutation.isPending}
-                    >
-                      {channel.active ? (
-                        <>
-                          <Pause className="w-4 h-4 mr-2" />
-                          Pause
-                        </>
-                      ) : (
-                        <>
-                          <Play className="w-4 h-4 mr-2" />
-                          Resume
-                        </>
-                      )}
-                    </Button>
+                    {channel.oauth_error_message && channel.needs_reconnect && (
+                      <div className="text-xs text-red-300 bg-red-500/5 border border-red-500/30 rounded-lg p-3">
+                        {channel.oauth_error_message}
+                      </div>
+                    )}
+                    {channel.needs_reconnect ? (
+                      <Button
+                        variant="destructive"
+                        className="w-full rounded-xl"
+                        onClick={() => navigate(`/onboarding?reconnect=${channel.id}`)}
+                      >
+                        Reconectar canal
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        className="w-full border-2 border-primary/40 hover:border-primary/60"
+                        onClick={() => handleToggleStatus(channel)}
+                        disabled={toggleStatusMutation.isPending}
+                      >
+                        {channel.active ? (
+                          <>
+                            <Pause className="w-4 h-4 mr-2" />
+                            Pause
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-4 h-4 mr-2" />
+                            Resume
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </Card>
               </motion.div>
